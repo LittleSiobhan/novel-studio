@@ -1,0 +1,249 @@
+"""
+小说 → 剧本 → 分镜 工作站后端
+MVP: 核心AI处理链路
+"""
+import os
+import json
+import re
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional
+import httpx
+
+app = FastAPI(title="📚 小说工作站 API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ─── Config ────────────────────────────────────────────────
+MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
+MINIMAX_BASE_URL = "https://api.minimaxi.com/anthropic"
+
+# ─── Pydantic Models ───────────────────────────────────────
+class NovelInput(BaseModel):
+    text: str
+    title: Optional[str] = "未命名小说"
+
+class SceneExtractResult(BaseModel):
+    scenes: list[dict]
+    characters: list[str]
+    total_chars: int
+
+class ScriptGenerateResult(BaseModel):
+    script: str
+    scene_count: int
+
+class StoryboardResult(BaseModel):
+    storyboards: list[dict]
+    total_scenes: int
+
+# ─── AI Helper ─────────────────────────────────────────────
+async def call_minimax(system: str, user: str) -> str:
+    """调用 MiniMax GLM-5"""
+    if not MINIMAX_API_KEY:
+        raise HTTPException(500, "MINIMAX_API_KEY 未配置")
+    
+    async with httpx.AsyncClient(timeout=120) as client:
+        resp = await client.post(
+            f"{MINIMAX_BASE_URL}/v1/messages",
+            headers={
+                "Authorization": f"Bearer {MINIMAX_API_KEY}",
+                "Content-Type": "application/json",
+                "anthropic-version": "2023-06-01",
+            },
+            json={
+                "model": "MiniMax-M2.7",
+                "max_tokens": 4096,
+                "system": system,
+                "messages": [{"role": "user", "content": user}],
+            },
+        )
+        if resp.status_code != 200:
+            raise HTTPException(500, f"AI API 错误: {resp.status_code} - {resp.text}")
+        data = resp.json()
+        # MiniMax may return content items with type "thinking" or "text"
+        # We want the "text" type content
+        for item in data.get("content", []):
+            if item.get("type") == "text":
+                return item["text"]
+        # Fallback: if no text type found, return the raw content for debugging
+        raise HTTPException(500, f"AI 返回格式异常：{json.dumps(data.get('content', []), ensure_ascii=False)[:300]}")
+
+
+# ─── API Routes ────────────────────────────────────────────
+
+@app.get("/")
+async def root():
+    return {"message": "📚 小说工作站 API 正常运行", "version": "0.1.0"}
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "ai_configured": bool(MINIMAX_API_KEY)}
+
+
+# ─── 1. 场景提取 ───────────────────────────────────────────
+@app.post("/api/extract-scenes", response_model=SceneExtractResult)
+async def extract_scenes(input: NovelInput):
+    """
+    将小说文本拆解为场景列表，并识别角色
+    """
+    system_prompt = """你是一个专业的影视编剧助手。
+
+收到小说文本后：
+1. 提取所有出现的角色名字（按出现顺序列出）
+2. 将小说切割成独立场景（基于：时间变化、地点变化、人物变化）
+3. 每个场景输出 JSON 格式：
+   - scene_id: 场景编号
+   - location: 室内/室外 + 具体地点
+   - time: 时间（白天/夜晚/凌晨等）
+   - characters: 出场的角色列表
+   - summary: 30字以内的场景概要
+   - key_dialogue: 最能代表这场戏的一句对话（无对话则省略）
+
+最终输出一个完整的 JSON 对象，格式如下：
+{
+  "characters": ["角色1", "角色2", ...],
+  "scenes": [场景1, 场景2, ...]
+}
+
+只输出 JSON，不要其他文字。"""
+
+    raw = await call_minimax(system_prompt, f"小说标题：{input.title}\n\n{input.text[:8000]}")
+    
+    # 提取 JSON
+    try:
+        # 尝试从 markdown 代码块中提取
+        match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
+        if match:
+            data = json.loads(match.group(1))
+        else:
+            data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise HTTPException(500, f"AI 返回格式错误，无法解析场景: {e}\n\n原始输出:\n{raw[:500]}")
+
+    return SceneExtractResult(
+        characters=data.get("characters", []),
+        scenes=data.get("scenes", []),
+        total_chars=len(input.text),
+    )
+
+
+# ─── 2. 剧本生成 ───────────────────────────────────────────
+@app.post("/api/generate-script", response_model=ScriptGenerateResult)
+async def generate_script(input: NovelInput):
+    """
+    将小说文本直接转化为标准剧本格式
+    """
+    system_prompt = """你是一个专业电影剧本作家。
+
+收到小说文本后，将其改编为标准英文/中文剧本格式。
+
+剧本格式规范：
+- 大写场景标题：INT./EXT. 地点 - 时间
+- 场景描述：用1-3句话描写镜头画面（文学但不冗长）
+- 角色名：大写后跟冒号
+- 对话：不加引号
+- 括号：表示动作或语气（如 (温柔地)）
+
+输出完整剧本，保持叙事张力，适度删减冗余描写。
+
+只输出剧本正文，不要额外说明。"""
+
+    script = await call_minimax(system_prompt, input.text[:8000])
+    
+    # 统计场景数
+    scene_count = len(re.findall(r"^(INT\.|EXT\.)", script, re.MULTILINE))
+    
+    return ScriptGenerateResult(
+        script=script.strip(),
+        scene_count=scene_count,
+    )
+
+
+# ─── 3. 分镜生成 ───────────────────────────────────────────
+@app.post("/api/generate-storyboard", response_model=StoryboardResult)
+async def generate_storyboard(scenes: list[dict]):
+    """
+    接收场景列表，为每个场景生成分镜提示词
+    """
+    system_prompt = """你是一个专业的影视分镜师和AI绘图提示词工程师。
+
+收到场景列表后，为每个场景生成一个分镜卡片，包含：
+- 画面描述：详细的镜头画面描写（适合转译为AI绘图提示词）
+- 摄影角度：如鸟瞰、仰角、过肩、正面中景等
+- 氛围关键词：冷色调/暖色调/暗光等
+- jimeng_prompt：即梦(Jimeng)风格的英文提示词，格式：
+  客观描述 + 整体风格 + 光影细节 + 细节补充 + 电影级画面质感，高清摄影风格，专业摄影作品，8K超高清，无噪点，杰作
+
+输出 JSON 数组格式：
+[
+  {
+    "scene_id": 1,
+    "visual_description": "...",
+    "camera_angle": "...",
+    "mood": "...",
+    "jimeng_prompt": "..."
+  },
+  ...
+]
+
+只输出 JSON。"""
+
+    scenes_text = json.dumps(scenes[:20], ensure_ascii=False, indent=2)  # 最多20个场景
+    raw = await call_minimax(system_prompt, f"场景列表：\n{scenes_text}")
+    
+    try:
+        match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
+        if match:
+            data = json.loads(match.group(1))
+        else:
+            data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise HTTPException(500, f"AI 返回格式错误: {e}\n\n原始输出:\n{raw[:500]}")
+    
+    return StoryboardResult(
+        storyboards=data if isinstance(data, list) else data.get("storyboards", []),
+        total_scenes=len(scenes),
+    )
+
+
+# ─── 4. 完整流程 ───────────────────────────────────────────
+class FullPipelineRequest(BaseModel):
+    text: str
+    title: Optional[str] = "未命名小说"
+
+@app.post("/api/full-pipeline")
+async def full_pipeline(req: FullPipelineRequest):
+    """
+    一次调用完成：场景提取 + 剧本生成 + 分镜生成
+    返回所有结果供前端渲染
+    """
+    # Step 1: 场景提取
+    scenes_result = await extract_scenes(NovelInput(text=req.text, title=req.title))
+    
+    # Step 2: 剧本生成
+    script_result = await generate_script(NovelInput(text=req.text, title=req.title))
+    
+    # Step 3: 分镜生成
+    storyboard_result = await generate_storyboard(scenes_result.scenes)
+    
+    return {
+        "title": req.title,
+        "total_chars": scenes_result.total_chars,
+        "characters": scenes_result.characters,
+        "scenes": scenes_result.scenes,
+        "script": script_result.script,
+        "script_scene_count": script_result.scene_count,
+        "storyboards": storyboard_result.storyboards,
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)
