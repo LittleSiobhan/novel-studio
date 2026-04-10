@@ -1,17 +1,29 @@
 """
 小说 → 剧本 → 分镜 工作站后端
-MVP: 核心AI处理链路
+完整版：AI处理 + 项目存储
 """
 import os
 import json
 import re
-from fastapi import FastAPI, HTTPException
+from datetime import datetime
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
+from sqlalchemy.orm import Session
 import httpx
 
-app = FastAPI(title="📚 小说工作站 API")
+from models import engine, Base, Project, SessionLocal, init_db
+
+# ─── Lifespan ──────────────────────────────────────────────
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()  # 启动时创建表
+    yield
+
+app = FastAPI(title="📚 小说工作站 API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,7 +37,47 @@ app.add_middleware(
 MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
 MINIMAX_BASE_URL = "https://api.minimaxi.com/anthropic"
 
+
+# ─── DB Helpers ────────────────────────────────────────────
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 # ─── Pydantic Models ───────────────────────────────────────
+class ProjectCreate(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    novel_text: Optional[str] = ""
+    settings: Optional[dict] = {}
+
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    novel_text: Optional[str] = None
+    script: Optional[str] = None
+    storyboards: Optional[list] = None
+    settings: Optional[dict] = None
+    status: Optional[str] = None
+
+class ProjectResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    novel_text: Optional[str]
+    script: Optional[str]
+    storyboards: Optional[list]
+    settings: Optional[dict]
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class NovelInput(BaseModel):
     text: str
     title: Optional[str] = "未命名小说"
@@ -43,9 +95,12 @@ class StoryboardResult(BaseModel):
     storyboards: list[dict]
     total_scenes: int
 
+class FullPipelineRequest(BaseModel):
+    text: str
+    title: Optional[str] = "未命名小说"
+
 # ─── AI Helper ─────────────────────────────────────────────
 async def call_minimax(system: str, user: str) -> str:
-    """调用 MiniMax GLM-5"""
     if not MINIMAX_API_KEY:
         raise HTTPException(500, "MINIMAX_API_KEY 未配置")
     
@@ -67,12 +122,9 @@ async def call_minimax(system: str, user: str) -> str:
         if resp.status_code != 200:
             raise HTTPException(500, f"AI API 错误: {resp.status_code} - {resp.text}")
         data = resp.json()
-        # MiniMax may return content items with type "thinking" or "text"
-        # We want the "text" type content
         for item in data.get("content", []):
             if item.get("type") == "text":
                 return item["text"]
-        # Fallback: if no text type found, return the raw content for debugging
         raise HTTPException(500, f"AI 返回格式异常：{json.dumps(data.get('content', []), ensure_ascii=False)[:300]}")
 
 
@@ -80,19 +132,68 @@ async def call_minimax(system: str, user: str) -> str:
 
 @app.get("/")
 async def root():
-    return {"message": "📚 小说工作站 API 正常运行", "version": "0.1.0"}
+    return {"message": "📚 小说工作站 API 正常运行", "version": "1.0.0"}
 
 @app.get("/health")
 async def health():
     return {"status": "ok", "ai_configured": bool(MINIMAX_API_KEY)}
 
 
+# ─── 项目管理 CRUD ─────────────────────────────────────────
+@app.get("/api/projects", response_model=List[ProjectResponse])
+async def list_projects(db: Session = Depends(get_db)):
+    """列出所有项目"""
+    projects = db.query(Project).order_by(Project.updated_at.desc()).all()
+    return projects
+
+@app.get("/api/projects/{project_id}", response_model=ProjectResponse)
+async def get_project(project_id: int, db: Session = Depends(get_db)):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(404, "项目不存在")
+    return project
+
+@app.post("/api/projects", response_model=ProjectResponse)
+async def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
+    db_project = Project(
+        name=project.name,
+        description=project.description or "",
+        novel_text=project.novel_text or "",
+        settings=project.settings or {},
+        status="draft",
+    )
+    db.add(db_project)
+    db.commit()
+    db.refresh(db_project)
+    return db_project
+
+@app.put("/api/projects/{project_id}", response_model=ProjectResponse)
+async def update_project(project_id: int, update: ProjectUpdate, db: Session = Depends(get_db)):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(404, "项目不存在")
+    
+    for field, value in update.model_dump(exclude_unset=True).items():
+        setattr(project, field, value)
+    
+    project.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(project)
+    return project
+
+@app.delete("/api/projects/{project_id}")
+async def delete_project(project_id: int, db: Session = Depends(get_db)):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(404, "项目不存在")
+    db.delete(project)
+    db.commit()
+    return {"message": "删除成功"}
+
+
 # ─── 1. 场景提取 ───────────────────────────────────────────
 @app.post("/api/extract-scenes", response_model=SceneExtractResult)
 async def extract_scenes(input: NovelInput):
-    """
-    将小说文本拆解为场景列表，并识别角色
-    """
     system_prompt = """你是一个专业的影视编剧助手。
 
 收到小说文本后：
@@ -116,9 +217,7 @@ async def extract_scenes(input: NovelInput):
 
     raw = await call_minimax(system_prompt, f"小说标题：{input.title}\n\n{input.text[:8000]}")
     
-    # 提取 JSON
     try:
-        # 尝试从 markdown 代码块中提取
         match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
         if match:
             data = json.loads(match.group(1))
@@ -137,9 +236,6 @@ async def extract_scenes(input: NovelInput):
 # ─── 2. 剧本生成 ───────────────────────────────────────────
 @app.post("/api/generate-script", response_model=ScriptGenerateResult)
 async def generate_script(input: NovelInput):
-    """
-    将小说文本直接转化为标准剧本格式
-    """
     system_prompt = """你是一个专业电影剧本作家。
 
 收到小说文本后，将其改编为标准英文/中文剧本格式。
@@ -156,8 +252,6 @@ async def generate_script(input: NovelInput):
 只输出剧本正文，不要额外说明。"""
 
     script = await call_minimax(system_prompt, input.text[:8000])
-    
-    # 统计场景数
     scene_count = len(re.findall(r"^(INT\.|EXT\.)", script, re.MULTILINE))
     
     return ScriptGenerateResult(
@@ -169,9 +263,6 @@ async def generate_script(input: NovelInput):
 # ─── 3. 分镜生成 ───────────────────────────────────────────
 @app.post("/api/generate-storyboard", response_model=StoryboardResult)
 async def generate_storyboard(scenes: list[dict]):
-    """
-    接收场景列表，为每个场景生成分镜提示词
-    """
     system_prompt = """你是一个专业的影视分镜师和AI绘图提示词工程师。
 
 收到场景列表后，为每个场景生成一个分镜卡片，包含：
@@ -195,7 +286,7 @@ async def generate_storyboard(scenes: list[dict]):
 
 只输出 JSON。"""
 
-    scenes_text = json.dumps(scenes[:20], ensure_ascii=False, indent=2)  # 最多20个场景
+    scenes_text = json.dumps(scenes[:20], ensure_ascii=False, indent=2)
     raw = await call_minimax(system_prompt, f"场景列表：\n{scenes_text}")
     
     try:
@@ -214,23 +305,10 @@ async def generate_storyboard(scenes: list[dict]):
 
 
 # ─── 4. 完整流程 ───────────────────────────────────────────
-class FullPipelineRequest(BaseModel):
-    text: str
-    title: Optional[str] = "未命名小说"
-
 @app.post("/api/full-pipeline")
 async def full_pipeline(req: FullPipelineRequest):
-    """
-    一次调用完成：场景提取 + 剧本生成 + 分镜生成
-    返回所有结果供前端渲染
-    """
-    # Step 1: 场景提取
     scenes_result = await extract_scenes(NovelInput(text=req.text, title=req.title))
-    
-    # Step 2: 剧本生成
     script_result = await generate_script(NovelInput(text=req.text, title=req.title))
-    
-    # Step 3: 分镜生成
     storyboard_result = await generate_storyboard(scenes_result.scenes)
     
     return {

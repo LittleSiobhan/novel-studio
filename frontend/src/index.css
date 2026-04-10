@@ -1,34 +1,125 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  body {
-    @apply bg-bg text-gray-200 antialiased;
-  }
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  ::-webkit-scrollbar-track {
-    @apply bg-transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    @apply bg-border rounded-full;
-  }
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --surface-warm: #fdf6ee;
+  --border: #e8ddd4;
+  --accent: #c8956c;
+  --accent-light: #e8b89a;
+  --accent-dark: #a0714f;
+  --text: #3d2e1e;
+  --text-muted: #8b7355;
+  --gold: #d4a853;
 }
 
-@layer components {
-  .btn-primary {
-    @apply bg-primary hover:bg-primary/80 text-white px-5 py-2.5 rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
-  }
-  .btn-secondary {
-    @apply bg-surface hover:bg-border text-gray-200 px-5 py-2.5 rounded-lg font-medium transition-all duration-200 border border-border;
-  }
-  .card {
-    @apply bg-surface rounded-xl border border-border p-5;
-  }
-  .input-area {
-    @apply bg-bg border border-border rounded-lg px-4 py-3 text-gray-200 placeholder-gray-600 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors resize-none;
-  }
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Noto Sans SC', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.font-serif {
+  font-family: 'Noto Serif SC', serif;
+}
+
+/* 纸质感背景 */
+.paper-bg {
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(200, 149, 108, 0.12) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 100%, rgba(212, 168, 83, 0.1) 0%, transparent 60%),
+    var(--bg);
+}
+
+/* 温暖光晕 */
+.warm-glow {
+  background: radial-gradient(ellipse at center, rgba(200, 149, 108, 0.15) 0%, transparent 70%);
+}
+
+/* 柔和阴影 */
+.shadow-warm {
+  box-shadow: 0 4px 24px rgba(139, 115, 85, 0.08), 0 1px 4px rgba(139, 115, 85, 0.04);
+}
+
+/* 输入框 */
+.input-warm {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 15px;
+  color: var(--text);
+  width: 100%;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.input-warm:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(200, 149, 108, 0.12);
+}
+
+.input-warm::placeholder {
+  color: var(--text-muted);
+}
+
+/* 按钮 */
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 28px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+  letter-spacing: 0.5px;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(200, 149, 108, 0.35);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* 卡片 */
+.card-warm {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 32px;
+  box-shadow: 0 4px 32px rgba(139, 115, 85, 0.08);
+}
+
+/* 装饰线 */
+.divider-warm {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+}
+
+/* 标签 */
+.tag-warm {
+  background: var(--surface-warm);
+  border: 1px solid var(--accent-light);
+  color: var(--accent-dark);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
 }
