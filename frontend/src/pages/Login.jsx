@@ -1,6 +1,23 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 
+// 设计系统变量
+const tokens = {
+  bg: '#0a0a0f',
+  card: 'rgba(18, 18, 26, 0.9)',
+  cardBorder: 'rgba(255,255,255,0.07)',
+  inputBg: 'rgba(26, 26, 38, 0.8)',
+  inputBorder: 'rgba(255,255,255,0.06)',
+  accent: '#7c5cfc',
+  accentLight: '#a78bfa',
+  accentGlow: 'rgba(124, 92, 252, 0.2)',
+  text: '#e8e8ed',
+  textMuted: '#6b6b7a',
+  error: '#fc5c5c',
+  success: '#5cffb1',
+  radius: '14px',
+}
+
 export default function Login() {
   const { login } = useAuth()
   const [username, setUsername] = useState('')
@@ -9,9 +26,10 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [showPwd, setShowPwd] = useState(false)
+  const [inputFocus, setInputFocus] = useState(null)
 
   useEffect(() => {
-    const t = setTimeout(() => setMounted(true), 50)
+    const t = setTimeout(() => setMounted(true), 80)
     return () => clearTimeout(t)
   }, [])
 
@@ -33,106 +51,126 @@ export default function Login() {
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden"
-      style={{ background: '#0c0a09' }}
+      style={{ background: tokens.bg }}
     >
       {/* 背景光斑 */}
-      <div
-        className="absolute pointer-events-none"
-        style={{
-          inset: 0,
-          background: `
-            radial-gradient(ellipse 600px 500px at 80% 10%, rgba(124, 92, 252, 0.12) 0%, transparent 70%),
-            radial-gradient(ellipse 400px 400px at 10% 90%, rgba(192, 149, 108, 0.08) 0%, transparent 70%),
-            radial-gradient(ellipse 300px 300px at 50% 50%, rgba(124, 92, 252, 0.04) 0%, transparent 70%)
-          `,
-        }}
-      />
+      <div className="absolute inset-0 pointer-events-none">
+        {/* 主光斑 - 右上 */}
+        <div
+          className="absolute"
+          style={{
+            width: 600, height: 500,
+            top: '-15%', right: '-8%',
+            background: 'radial-gradient(ellipse, rgba(124,92,252,0.18) 0%, transparent 70%)',
+            filter: 'blur(80px)',
+          }}
+        />
+        {/* 次光斑 - 左下 */}
+        <div
+          className="absolute"
+          style={{
+            width: 400, height: 400,
+            bottom: '-10%', left: '-5%',
+            background: 'radial-gradient(ellipse, rgba(92,124,252,0.12) 0%, transparent 70%)',
+            filter: 'blur(80px)',
+          }}
+        />
+        {/* 中光斑 */}
+        <div
+          className="absolute"
+          style={{
+            width: 280, height: 280,
+            top: '35%', left: '35%',
+            background: 'radial-gradient(ellipse, rgba(188,124,252,0.07) 0%, transparent 70%)',
+            filter: 'blur(60px)',
+          }}
+        />
+      </div>
 
       {/* 背景网格 */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
           backgroundImage: `
-            linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)
+            linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)
           `,
-          backgroundSize: '60px 60px',
-          maskImage: 'radial-gradient(ellipse at center, black 40%, transparent 80%)',
+          backgroundSize: '64px 64px',
+          maskImage: 'radial-gradient(ellipse at center, black 35%, transparent 75%)',
         }}
       />
 
-      {/* 中央卡片 */}
+      {/* 登录卡片 */}
       <div
-        className={`relative z-10 w-full max-w-[400px] transition-all duration-700 ease-out ${
-          mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'
-        }`}
+        className="relative z-10 w-full max-w-[400px]"
+        style={{
+          opacity: mounted ? 1 : 0,
+          transform: mounted ? 'translateY(0)' : 'translateY(20px)',
+          transition: 'opacity 0.6s ease, transform 0.6s ease',
+        }}
       >
         <div
-          className="rounded-2xl p-10"
+          className="rounded-[20px] p-10"
           style={{
-            background: 'rgba(18, 18, 26, 0.85)',
-            backdropFilter: 'blur(24px)',
-            border: '1px solid rgba(255,255,255,0.07)',
-            boxShadow: '0 4px 32px rgba(0,0,0,0.5), 0 0 80px rgba(124, 92, 252, 0.08)',
+            background: tokens.card,
+            backdropFilter: 'blur(28px)',
+            border: `1px solid ${tokens.cardBorder}`,
+            boxShadow: `
+              0 8px 40px rgba(0,0,0,0.5),
+              0 0 80px ${tokens.accentGlow}
+            `,
           }}
         >
-          {/* 图标 + 标题 */}
+          {/* 品牌区 */}
           <div className="text-center mb-8">
             <div
-              className="inline-flex items-center justify-center w-14 h-14 rounded-2xl text-2xl mb-4"
+              className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4"
               style={{
-                background: 'linear-gradient(135deg, #7c5cfc, #a78bfa)',
-                boxShadow: '0 4px 20px rgba(124, 92, 252, 0.3)',
+                background: `linear-gradient(135deg, ${tokens.accent}, ${tokens.accentLight})`,
+                boxShadow: `0 4px 24px ${tokens.accentGlow}`,
               }}
             >
-              📖
+              <span className="text-2xl">📖</span>
             </div>
             <h1
               className="text-xl font-semibold mb-1"
-              style={{ color: '#e8e8ed', letterSpacing: '0.02em' }}
+              style={{ color: tokens.text, letterSpacing: '0.02em' }}
             >
               小说工作站
             </h1>
-            <p style={{ color: '#6b6b7a', fontSize: '13px' }}>
+            <p style={{ color: tokens.textMuted, fontSize: 13 }}>
               欢迎回来，请登录您的账号
             </p>
           </div>
 
           {/* 表单 */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {/* 用户名 */}
             <div>
               <label
-                className="block text-xs mb-2 uppercase tracking-widest"
-                style={{ color: '#6b6b7a' }}
+                className="block text-xs mb-2"
+                style={{ color: tokens.textMuted, letterSpacing: '0.08em', textTransform: 'uppercase' }}
               >
                 账号
               </label>
               <div className="relative">
                 <input
                   type="text"
-                  className="w-full px-4 py-3 pl-10 rounded-xl text-sm outline-none transition-all duration-200"
+                  className="w-full pl-10 pr-4 py-3.5 rounded-xl text-sm outline-none transition-all duration-200"
                   style={{
-                    background: 'rgba(26, 26, 38, 0.8)',
-                    border: '1.5px solid rgba(255,255,255,0.06)',
-                    color: '#e8e8ed',
+                    background: tokens.inputBg,
+                    border: `1.5px solid ${inputFocus === 'user' ? tokens.accent : tokens.inputBorder}`,
+                    color: tokens.text,
+                    boxShadow: inputFocus === 'user' ? `0 0 0 3px ${tokens.accentGlow}` : 'none',
                   }}
-                  onFocus={e => {
-                    e.target.style.borderColor = '#7c5cfc'
-                    e.target.style.boxShadow = '0 0 0 3px rgba(124, 92, 252, 0.15)'
-                  }}
-                  onBlur={e => {
-                    e.target.style.borderColor = 'rgba(255,255,255,0.06)'
-                    e.target.style.boxShadow = 'none'
-                  }}
+                  onFocus={() => setInputFocus('user')}
+                  onBlur={() => setInputFocus(null)}
                   placeholder="请输入用户名"
                   value={username}
                   onChange={e => setUsername(e.target.value)}
                   autoComplete="username"
                 />
-                <span
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-sm opacity-40 pointer-events-none"
-                >
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm pointer-events-none" style={{ opacity: 0.4 }}>
                   👤
                 </span>
               </div>
@@ -141,56 +179,76 @@ export default function Login() {
             {/* 密码 */}
             <div>
               <label
-                className="block text-xs mb-2 uppercase tracking-widest"
-                style={{ color: '#6b6b7a' }}
+                className="block text-xs mb-2"
+                style={{ color: tokens.textMuted, letterSpacing: '0.08em', textTransform: 'uppercase' }}
               >
                 密码
               </label>
               <div className="relative">
                 <input
                   type={showPwd ? 'text' : 'password'}
-                  className="w-full px-4 py-3 pl-10 pr-10 rounded-xl text-sm outline-none transition-all duration-200"
+                  className="w-full pl-10 pr-10 py-3.5 rounded-xl text-sm outline-none transition-all duration-200"
                   style={{
-                    background: 'rgba(26, 26, 38, 0.8)',
-                    border: '1.5px solid rgba(255,255,255,0.06)',
-                    color: '#e8e8ed',
+                    background: tokens.inputBg,
+                    border: `1.5px solid ${inputFocus === 'pwd' ? tokens.accent : tokens.inputBorder}`,
+                    color: tokens.text,
+                    boxShadow: inputFocus === 'pwd' ? `0 0 0 3px ${tokens.accentGlow}` : 'none',
                   }}
-                  onFocus={e => {
-                    e.target.style.borderColor = '#7c5cfc'
-                    e.target.style.boxShadow = '0 0 0 3px rgba(124, 92, 252, 0.15)'
-                  }}
-                  onBlur={e => {
-                    e.target.style.borderColor = 'rgba(255,255,255,0.06)'
-                    e.target.style.boxShadow = 'none'
-                  }}
+                  onFocus={() => setInputFocus('pwd')}
+                  onBlur={() => setInputFocus(null)}
                   placeholder="请输入密码"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   autoComplete="current-password"
                 />
-                <span
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-sm opacity-40 pointer-events-none"
-                >
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm pointer-events-none" style={{ opacity: 0.4 }}>
                   🔒
                 </span>
                 <button
                   type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-sm opacity-40 hover:opacity-80 transition-opacity"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sm transition-opacity"
+                  style={{ opacity: 0.4 }}
                   onClick={() => setShowPwd(v => !v)}
+                  onMouseEnter={e => e.target.style.opacity = '0.8'}
+                  onMouseLeave={e => e.target.style.opacity = '0.4'}
                 >
                   {showPwd ? '🙈' : '👁'}
                 </button>
               </div>
             </div>
 
-            {/* 错误 */}
+            {/* 记住 + 忘记密码 */}
+            <div className="flex items-center justify-between" style={{ fontSize: 13 }}>
+              <label
+                className="flex items-center gap-2 cursor-pointer select-none"
+                style={{ color: tokens.textMuted }}
+              >
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded"
+                  style={{ accentColor: tokens.accent }}
+                />
+                <span>记住我</span>
+              </label>
+              <a
+                href="#"
+                className="transition-opacity"
+                style={{ color: tokens.accent, textDecoration: 'none' }}
+                onMouseEnter={e => e.target.style.opacity = '0.7'}
+                onMouseLeave={e => e.target.style.opacity = '1'}
+              >
+                忘记密码？
+              </a>
+            </div>
+
+            {/* 错误提示 */}
             {error && (
               <div
                 className="px-4 py-2.5 rounded-xl text-sm text-center"
                 style={{
-                  background: 'rgba(252, 92, 92, 0.1)',
-                  color: '#fc5c5c',
-                  border: '1px solid rgba(252, 92, 92, 0.2)',
+                  background: 'rgba(252,92,92,0.08)',
+                  color: tokens.error,
+                  border: '1px solid rgba(252,92,92,0.2)',
                 }}
               >
                 ⚠ {error}
@@ -201,20 +259,22 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 mt-2 rounded-xl text-white text-sm font-semibold transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full py-3.5 rounded-xl text-white text-sm font-semibold transition-all duration-200 disabled:opacity-50"
               style={{
-                background: 'linear-gradient(135deg, #7c5cfc, #9b7cfc)',
-                boxShadow: '0 4px 20px rgba(124, 92, 252, 0.25)',
+                background: loading
+                  ? tokens.accent
+                  : `linear-gradient(135deg, ${tokens.accent}, ${tokens.accentLight})`,
+                boxShadow: `0 4px 24px ${tokens.accentGlow}`,
               }}
               onMouseEnter={e => {
                 if (!loading) {
-                  e.target.style.transform = 'translateY(-1px)'
-                  e.target.style.boxShadow = '0 6px 28px rgba(124, 92, 252, 0.35)'
+                  e.currentTarget.style.transform = 'translateY(-1px)'
+                  e.currentTarget.style.boxShadow = `0 8px 32px ${tokens.accentGlow}`
                 }
               }}
               onMouseLeave={e => {
-                e.target.style.transform = 'translateY(0)'
-                e.target.style.boxShadow = '0 4px 20px rgba(124, 92, 252, 0.25)'
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = `0 4px 24px ${tokens.accentGlow}`
               }}
             >
               {loading ? (
@@ -232,15 +292,15 @@ export default function Login() {
           {/* 分割线 */}
           <div
             className="flex items-center gap-4 my-6"
-            style={{ color: '#6b6b7a', fontSize: '12px' }}
+            style={{ color: tokens.textMuted, fontSize: 12 }}
           >
             <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
             <span>或</span>
             <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
           </div>
 
-          {/* 底部 */}
-          <p className="text-center text-sm" style={{ color: '#6b6b7a' }}>
+          {/* 底部文案 */}
+          <p className="text-center" style={{ color: tokens.textMuted, fontSize: 13 }}>
             把故事变成影像 · 从文字到分镜
           </p>
         </div>
