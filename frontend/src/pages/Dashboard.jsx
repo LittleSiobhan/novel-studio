@@ -90,6 +90,8 @@ export default function Dashboard() {
   const [step, setStep] = useState('input')
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [creatingProject, setCreatingProject] = useState(false)
+  const [createdMsg, setCreatedMsg] = useState('')
   const [error, setError] = useState('')
   const [inputFocus, setInputFocus] = useState(false)
 
@@ -104,7 +106,7 @@ export default function Dashboard() {
 
   const createProject = async () => {
     if (!title.trim()) return
-    setLoading(true)
+    setCreatingProject(true)
     setError('')
     try {
       const res = await fetch(`${API}/projects`, {
@@ -117,10 +119,13 @@ export default function Dashboard() {
       setSelectedProject(p)
       setTitle('')
       setStep('input')
+      setNovelText('')
+      setCreatedMsg('✓ 项目已创建，请输入小说文本')
+      setTimeout(() => setCreatedMsg(''), 3000)
     } catch {
       setError('创建失败')
     } finally {
-      setLoading(false)
+      setCreatingProject(false)
     }
   }
 
@@ -226,16 +231,17 @@ export default function Dashboard() {
                 />
                 <button
                   onClick={createProject}
-                  disabled={loading || !title.trim()}
+                  disabled={creatingProject || !title.trim()}
                   style={{
                     width: '100%', padding: '9px',
-                    background: S.accent, border: 'none', borderRadius: 10,
-                    color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                    opacity: loading || !title.trim() ? 0.5 : 1,
+                    background: creatingProject ? S.textMuted : S.accent,
+                    border: 'none', borderRadius: 10,
+                    color: '#fff', fontSize: 13, fontWeight: 600, cursor: creatingProject ? 'not-allowed' : 'pointer',
+                    opacity: (!title.trim() && !creatingProject) ? 0.5 : 1,
                     transition: 'all 0.2s',
                   }}
                 >
-                  + 新建项目
+                  {creatingProject ? '创建中...' : '+ 新建项目'}
                 </button>
               </div>
 
@@ -305,6 +311,11 @@ export default function Dashboard() {
                   <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span>✍️</span> 输入小说文本
                   </div>
+                  {createdMsg && (
+                    <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(34,197,94,0.08)', color: '#22c55e', fontSize: 13, marginBottom: 12, border: '1px solid rgba(34,197,94,0.2)' }}>
+                      {createdMsg}
+                    </div>
+                  )}
                   <textarea
                     value={novelText}
                     onChange={e => setNovelText(e.target.value)}
