@@ -1,20 +1,22 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;600&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
 :root {
-  --bg: #faf8f5;
-  --surface: #ffffff;
-  --surface-warm: #fdf6ee;
-  --border: #e8ddd4;
-  --accent: #c8956c;
-  --accent-light: #e8b89a;
-  --accent-dark: #a0714f;
-  --text: #3d2e1e;
-  --text-muted: #8b7355;
-  --gold: #d4a853;
+  --bg: #0a0a0f;
+  --card: rgba(18, 18, 26, 0.9);
+  --card-border: rgba(255,255,255,0.07);
+  --input-bg: rgba(26, 26, 38, 0.8);
+  --input-border: rgba(255,255,255,0.06);
+  --accent: #7c5cfc;
+  --accent-light: #a78bfa;
+  --accent-glow: rgba(124, 92, 252, 0.2);
+  --text: #e8e8ed;
+  --text-muted: #6b6b7a;
+  --error: #fc5c5c;
+  --success: #5cffb1;
 }
 
 * {
@@ -24,7 +26,7 @@
 }
 
 body {
-  font-family: 'Noto Sans SC', -apple-system, sans-serif;
+  font-family: 'Noto Sans SC', 'Space Grotesk', sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -32,39 +34,10 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-.font-serif {
-  font-family: 'Noto Serif SC', Georgia, serif;
-}
-
-/* 输入框 */
-input {
-  font-family: inherit;
-}
-
-input::placeholder {
-  color: #b8a990;
-}
-
 /* 滚动条 */
-::-webkit-scrollbar {
-  width: 4px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(200, 149, 108, 0.3);
+  background: rgba(124, 92, 252, 0.25);
   border-radius: 2px;
-}
-
-/* 动画 */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.animate-fadeIn {
-  animation: fadeIn 0.5s ease forwards;
 }
