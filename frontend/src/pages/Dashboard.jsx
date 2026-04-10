@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 
-const API = 'http://localhost:8001/api'
+const API = '/api'
 
 const STEPS = [
   { id: 'input',   label: '输入小说', icon: '✍️' },
