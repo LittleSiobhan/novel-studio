@@ -20,19 +20,19 @@ class Project(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    novel_text = Column(Text, nullable=True)       # 原始小说文本
-    script = Column(Text, nullable=True)          # 生成的剧本
-    storyboards = Column(JSON, nullable=True)     # 分镜列表（JSON）
-    characters = Column(JSON, nullable=True)       # 角色列表（JSON）
-    scenes = Column(JSON, nullable=True)          # 场景列表（JSON）
-    settings = Column(JSON, nullable=True)         # 其他配置
-    status = Column(String(50), default="draft")  # draft / script_done / storyboard_done
+    novel_text = Column(Text, nullable=True)
+    script = Column(Text, nullable=True)
+    storyboards = Column(JSON, nullable=True)
+    characters = Column(JSON, nullable=True)
+    scenes = Column(JSON, nullable=True)
+    props = Column(JSON, nullable=True)
+    settings = Column(JSON, nullable=True)
+    status = Column(String(50), default="draft")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 def init_db():
-    """初始化数据库表"""
     Base.metadata.create_all(bind=engine)
 
 

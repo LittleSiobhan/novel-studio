@@ -62,6 +62,7 @@ class ProjectUpdate(BaseModel):
     storyboards: Optional[list] = None
     characters: Optional[list] = None
     scenes: Optional[list] = None
+    props: Optional[list] = None
     settings: Optional[dict] = None
     status: Optional[str] = None
 
@@ -74,6 +75,7 @@ class ProjectResponse(BaseModel):
     storyboards: Optional[list]
     characters: Optional[list]
     scenes: Optional[list]
+    props: Optional[list]
     settings: Optional[dict]
     status: str
     created_at: datetime
@@ -82,18 +84,25 @@ class ProjectResponse(BaseModel):
     class Config:
         from_attributes = True
 
-class CharactersRequest(BaseModel):
-    characters: list[str]
-    scenes: Optional[list[dict]] = None
-
 class NovelInput(BaseModel):
     text: str
     title: Optional[str] = "未命名小说"
 
 class SceneExtractResult(BaseModel):
     scenes: list[dict]
-    characters: list[str]
     total_chars: int
+
+class CharactersRequest(BaseModel):
+    characters: list[str]
+
+class PropsRequest(BaseModel):
+    script: str
+
+class PromptRequest(BaseModel):
+    """用户选择的待生成提示词的项目"""
+    scenes: Optional[list[dict]] = None   # 选中的场景 [{scene_id, visual_prompt}]
+    characters: Optional[list[dict]] = None  # 选中的角色 [{name, visual_prompt}]
+    props: Optional[list[dict]] = None   # 选中的道具 [{name, visual_prompt}]
 
 class ScriptGenerateResult(BaseModel):
     script: str
@@ -235,48 +244,134 @@ async def extract_scenes(input: NovelInput):
         raise HTTPException(500, f"AI 返回格式错误，无法解析场景: {e}\n\n原始输出:\n{raw[:500]}")
 
     return SceneExtractResult(
-        characters=data.get("characters", []),
         scenes=data.get("scenes", []),
         total_chars=len(input.text),
     )
 
 
-# ─── 1.5 角色生成 ─────────────────────────────────────────
-@app.post("/api/generate-characters")
-async def generate_characters(req: CharactersRequest):
+# ─── 1.5 角色提取（从剧本） ─────────────────────────────────
+@app.post("/api/extract-characters")
+async def extract_characters(input: NovelInput):
     """
-    为提取到的角色列表生成详细描述和视觉提示词
+    从剧本中提取角色列表
     """
-    if not req.characters:
-        raise HTTPException(400, "角色列表为空")
+    system_prompt = """你是一个专业的影视编剧助手。
 
-    system_prompt = """你是一个专业的影视美术设计师和人物设定专家。
-
-收到角色列表后，为每个角色生成详细的视觉描述信息。
+分析以下剧本，提取所有出现的角色。
 
 输出 JSON 数组，每个角色包含：
 - name: 角色姓名
-- role: 角色定位（例：男主角、女主角、反派等）
-- age_appearance: 外貌年龄描述
-- personality: 性格特点
-- visual_prompt: AI绘图提示词（用于生成角色形象图），格式：
-  人物类型 + 具体外貌描述 + 服装风格 + 光影氛围 + 电影级画面质感，专业摄影作品，8K超高清，无噪点，杰作
+- role: 角色定位（例：男主角、女主角、反派、配角等）
 
-输出 JSON 数组，不要其他文字。"""
+只输出 JSON 数组，不要其他文字。"""
 
-    chars_text = json.dumps(req.characters[:20], ensure_ascii=False)
-    raw = await call_minimax(system_prompt, f"角色列表：\n{chars_text}")
-
+    raw = await call_minimax(system_prompt, f"剧本：\n{input.text[:8000]}")
     try:
         match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
-        if match:
-            data = json.loads(match.group(1))
-        else:
-            data = json.loads(raw)
+        data = json.loads(match.group(1)) if match else json.loads(raw)
     except json.JSONDecodeError as e:
-        raise HTTPException(500, f"AI 返回格式错误: {e}\n\n原始输出:\n{raw[:500]}")
-
+        raise HTTPException(500, f"AI 返回格式错误: {e}\n\n{raw[:300]}")
     return {"characters": data, "total": len(data)}
+
+
+# ─── 1.6 道具提取（从剧本） ─────────────────────────────────
+@app.post("/api/extract-props")
+async def extract_props(req: PropsRequest):
+    """
+    从剧本中提取重要道具/物品
+    """
+    system_prompt = """你是一个专业的影视美术指导。
+
+分析以下剧本，提取所有重要的道具、物品、场景元素。
+
+输出 JSON 数组，每个道具包含：
+- name: 道具名称
+- description: 道具的外观和用途描述
+- scene_where: 出现在哪场戏
+
+只输出 JSON 数组，不要其他文字。"""
+
+    raw = await call_minimax(system_prompt, f"剧本：\n{req.script[:8000]}")
+    try:
+        match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
+        data = json.loads(match.group(1)) if match else json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise HTTPException(500, f"AI 返回格式错误: {e}\n\n{raw[:300]}")
+    return {"props": data, "total": len(data)}
+
+
+# ─── 1.7 统一生成提示词 ────────────────────────────────────
+@app.post("/api/generate-prompts")
+async def generate_prompts(req: PromptRequest):
+    """
+    为用户选中的场景/角色/道具生成视觉提示词
+    """
+    results = {}
+
+    # 场景提示词
+    if req.scenes:
+        system_prompt = """你是一个专业的影视分镜师和AI绘图提示词工程师。
+
+收到场景列表后，为每个场景生成视觉提示词。
+
+每个场景输出 JSON：
+- scene_id: 场景编号
+- visual_description: 画面描述
+- camera_angle: 摄影角度（鸟瞰/仰角/过肩/正面中景等）
+- mood: 氛围关键词（冷色调/暖色调/暗光等）
+- jimeng_prompt: 即梦(Jimeng)风格英文提示词，格式：
+  客观描述 + 整体风格 + 光影细节 + 细节补充 + 电影级画面质感，高清摄影风格，专业摄影作品，8K超高清，无噪点，杰作
+
+只输出 JSON 数组。"""
+        raw = await call_minimax(system_prompt, f"场景列表：\n{json.dumps(req.scenes, ensure_ascii=False, indent=2)}")
+        try:
+            match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
+            results["scenes"] = json.loads(match.group(1)) if match else json.loads(raw)
+        except:
+            results["scenes"] = req.scenes
+
+    # 角色提示词
+    if req.characters:
+        system_prompt = """你是一个专业的影视美术设计师和人物设定专家。
+
+收到角色列表后，为每个角色生成视觉提示词。
+
+每个角色输出 JSON：
+- name: 角色姓名
+- role: 角色定位
+- age_appearance: 外貌年龄描述
+- personality: 性格特点
+- visual_prompt: AI绘图英文提示词（格式：人物类型 + 外貌 + 服装 + 光影 + 电影级质感，专业摄影作品，8K超高清，无噪点，杰作）
+
+只输出 JSON 数组。"""
+        raw = await call_minimax(system_prompt, f"角色列表：\n{json.dumps(req.characters, ensure_ascii=False, indent=2)}")
+        try:
+            match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
+            results["characters"] = json.loads(match.group(1)) if match else json.loads(raw)
+        except:
+            results["characters"] = req.characters
+
+    # 道具提示词
+    if req.props:
+        system_prompt = """你是一个专业的影视美术指导。
+
+收到道具列表后，为每个道具生成视觉提示词。
+
+每个道具输出 JSON：
+- name: 道具名称
+- description: 道具外观描述
+- scene_where: 出现场景
+- visual_prompt: AI绘图英文提示词（格式：道具类型 + 外观 + 材质 + 光影 + 电影级质感，专业摄影作品，8K超高清，无噪点，杰作）
+
+只输出 JSON 数组。"""
+        raw = await call_minimax(system_prompt, f"道具列表：\n{json.dumps(req.props, ensure_ascii=False, indent=2)}")
+        try:
+            match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
+            results["props"] = json.loads(match.group(1)) if match else json.loads(raw)
+        except:
+            results["props"] = req.props
+
+    return results
 
 
 # ─── 2. 剧本生成 ───────────────────────────────────────────
