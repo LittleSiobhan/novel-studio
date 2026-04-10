@@ -26,7 +26,7 @@ export default function Login() {
   }
 
   return (
-    <div style={{ background: '#0a0a0f', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', position: 'relative', overflow: 'hidden' }}>
+    <div style={{ background: '#0a0a0f', minHeight: '100vh', width: '100%', position: 'absolute', top: 0, left: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', boxSizing: 'border-box' }}>
 
       {/* 背景光效 */}
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>

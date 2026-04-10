@@ -27,9 +27,11 @@
 
 body {
   font-family: 'Noto Sans SC', 'Space Grotesk', sans-serif;
-  background: var(--bg);
-  color: var(--text);
+  background: #0a0a0f;
+  color: #e8e8ed;
   min-height: 100vh;
+  margin: 0;
+  padding: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
