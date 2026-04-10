@@ -23,6 +23,8 @@ class Project(Base):
     novel_text = Column(Text, nullable=True)       # 原始小说文本
     script = Column(Text, nullable=True)          # 生成的剧本
     storyboards = Column(JSON, nullable=True)     # 分镜列表（JSON）
+    characters = Column(JSON, nullable=True)       # 角色列表（JSON）
+    scenes = Column(JSON, nullable=True)          # 场景列表（JSON）
     settings = Column(JSON, nullable=True)         # 其他配置
     status = Column(String(50), default="draft")  # draft / script_done / storyboard_done
     created_at = Column(DateTime, default=datetime.utcnow)

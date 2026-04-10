@@ -3,13 +3,6 @@ import { useAuth } from '../context/AuthContext'
 
 const API = '/api'
 
-const STEPS = [
-  { id: 'input',   label: '输入小说', icon: '✍️' },
-  { id: 'scene',   label: '提取场景', icon: '🎬' },
-  { id: 'script',  label: '生成剧本', icon: '📄' },
-  { id: 'storyboard', label: '生成分镜', icon: '🎞️' },
-]
-
 const S = {
   bg: '#0a0a0f',
   card: 'rgba(18, 18, 26, 0.9)',
@@ -21,63 +14,45 @@ const S = {
   text: '#e8e8ed',
   textMuted: '#6b6b7a',
   error: '#fc5c5c',
-  success: '#5cffb1',
-}
-
-function StepBar({ step }) {
-  const order = ['input', 'scene', 'script', 'storyboard']
-  const cur = order.indexOf(step)
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '20px 0' }}>
-      {STEPS.map((s, i) => {
-        const done = order.indexOf(step) > i
-        const active = step === s.id
-        return (
-          <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: '50%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 16,
-              background: active ? S.accent : done ? '#22c55e' : 'rgba(255,255,255,0.04)',
-              color: active || done ? '#fff' : S.textMuted,
-              border: active ? `1.5px solid ${S.accent}` : '1.5px solid transparent',
-              boxShadow: active ? `0 0 12px ${S.accentGlow}` : 'none',
-              transition: 'all 0.3s',
-            }}>
-              {s.icon}
-            </div>
-            <span style={{
-              fontSize: 12,
-              color: active ? S.accent : done ? '#22c55e' : S.textMuted,
-              fontWeight: active ? 600 : 400,
-              display: 'none',
-            }} className="sm:block">{s.label}</span>
-            {i < STEPS.length - 1 && (
-              <div style={{
-                width: 32, height: 1.5,
-                background: done ? '#22c55e' : 'rgba(255,255,255,0.06)',
-                transition: 'background 0.3s',
-              }} />
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
+  success: '#22c55e',
 }
 
 function Card({ children, style }) {
   return (
-    <div style={{
-      background: S.card,
-      backdropFilter: 'blur(24px)',
-      border: `1px solid ${S.cardBorder}`,
-      borderRadius: 16,
-      padding: 24,
-      ...style,
-    }}>
+    <div style={{ background: S.card, backdropFilter: 'blur(24px)', border: `1px solid ${S.cardBorder}`, borderRadius: 16, padding: 24, ...style }}>
       {children}
     </div>
+  )
+}
+
+function SectionTitle({ icon, children }) {
+  return (
+    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, color: S.text }}>
+      <span>{icon}</span> {children}
+    </div>
+  )
+}
+
+function ActionBtn({ children, onClick, loading, disabled, variant = 'primary', style }) {
+  const isPrimary = variant === 'primary'
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled || loading}
+      style={{
+        padding: '10px 24px',
+        background: loading ? S.textMuted : isPrimary ? `linear-gradient(135deg, ${S.accent}, ${S.accentLight})` : 'rgba(255,255,255,0.04)',
+        border: isPrimary ? 'none' : `1px solid ${S.cardBorder}`,
+        borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 600,
+        cursor: (disabled || loading) ? 'not-allowed' : 'pointer',
+        opacity: disabled && !loading ? 0.5 : 1,
+        transition: 'all 0.2s',
+        boxShadow: isPrimary ? `0 4px 16px ${S.accentGlow}` : 'none',
+        ...style,
+      }}
+    >
+      {loading ? '处理中...' : children}
+    </button>
   )
 }
 
@@ -85,15 +60,26 @@ export default function Dashboard() {
   const { user, logout } = useAuth()
   const [projects, setProjects] = useState([])
   const [selectedProject, setSelectedProject] = useState(null)
+  const [projectName, setProjectName] = useState('')
   const [novelText, setNovelText] = useState('')
-  const [title, setTitle] = useState('')
-  const [step, setStep] = useState('input')
-  const [result, setResult] = useState(null)
-  const [loading, setLoading] = useState(false)
   const [creatingProject, setCreatingProject] = useState(false)
-  const [createdMsg, setCreatedMsg] = useState('')
+
+  // 工作流状态
+  const [step, setStep] = useState('idle') // idle | scenes | characters | script | storyboard
+  const [scenes, setScenes] = useState([])
+  const [characters, setCharacters] = useState([])
+  const [script, setScript] = useState('')
+  const [storyboards, setStoryboards] = useState([])
+  const [totalChars, setTotalChars] = useState(0)
+
+  // 加载状态
+  const [loadingScenes, setLoadingScenes] = useState(false)
+  const [loadingChars, setLoadingChars] = useState(false)
+  const [loadingScript, setLoadingScript] = useState(false)
+  const [loadingBoard, setLoadingBoard] = useState(false)
+
+  // 错误
   const [error, setError] = useState('')
-  const [inputFocus, setInputFocus] = useState(false)
 
   useEffect(() => { loadProjects() }, [])
 
@@ -105,23 +91,20 @@ export default function Dashboard() {
   }
 
   const createProject = async () => {
-    if (!title.trim()) return
+    if (!projectName.trim()) return
     setCreatingProject(true)
     setError('')
     try {
       const res = await fetch(`${API}/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: title, description: '' }),
+        body: JSON.stringify({ name: projectName, description: '' }),
       })
       const p = await res.json()
       setProjects([p, ...projects])
       setSelectedProject(p)
-      setTitle('')
-      setStep('input')
-      setNovelText('')
-      setCreatedMsg('✓ 项目已创建，请输入小说文本')
-      setTimeout(() => setCreatedMsg(''), 3000)
+      setProjectName('')
+      resetWorkflow()
     } catch {
       setError('创建失败')
     } finally {
@@ -129,307 +112,337 @@ export default function Dashboard() {
     }
   }
 
-  const runPipeline = async () => {
-    if (!novelText.trim()) return
-    setLoading(true)
+  const resetWorkflow = () => {
+    setStep('idle')
+    setScenes([])
+    setCharacters([])
+    setScript('')
+    setStoryboards([])
+    setTotalChars(0)
+    setNovelText('')
+  }
+
+  const selectProject = (p) => {
+    setSelectedProject(p)
+    setNovelText(p.novel_text || '')
+    setScenes(p.scenes || [])
+    setCharacters(p.characters || [])
+    setScript(p.script || '')
+    setStoryboards(p.storyboards || [])
+    setTotalChars(p.novel_text?.length || 0)
+    if (p.scenes?.length) setStep('scenes')
+    else if (p.characters?.length) setStep('characters')
+    else if (p.script) setStep('script')
+    else if (p.storyboards?.length) setStep('storyboard')
+    else setStep('idle')
+  }
+
+  const deleteProject = async (id, e) => {
+    e.stopPropagation()
+    await fetch(`${API}/projects/${id}`, { method: 'DELETE' })
+    setProjects(projects.filter(p => p.id !== id))
+    if (selectedProject?.id === id) { setSelectedProject(null); resetWorkflow() }
+  }
+
+  // ① 提取场景
+  const handleExtractScenes = async () => {
+    if (!novelText.trim()) { setError('请先输入小说文本'); return }
+    setLoadingScenes(true)
     setError('')
-    setResult(null)
-    setStep('scene')
     try {
-      const res = await fetch(`${API}/full-pipeline`, {
+      const res = await fetch(`${API}/extract-scenes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, text: novelText }),
+        body: JSON.stringify({ text: novelText, title: selectedProject?.name }),
       })
-      if (!res.ok) throw new Error('AI 处理失败')
       const data = await res.json()
-      setResult(data)
-      setStep('storyboard')
-      if (selectedProject) {
-        await fetch(`${API}/projects/${selectedProject.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            novel_text: novelText,
-            script: data.script,
-            storyboards: data.storyboards,
-            status: 'done',
-          }),
-        })
-      }
-      await loadProjects()
-    } catch (err) {
-      setError(err.message)
+      setScenes(data.scenes || [])
+      setCharacters(data.characters?.map(n => ({ name: n })) || [])
+      setTotalChars(data.total_chars || novelText.length)
+      setStep('scenes')
+      await saveProject({ scenes: data.scenes, characters: data.characters?.map(n => ({ name: n })), status: 'scenes_done' })
+    } catch {
+      setError('场景提取失败')
     } finally {
-      setLoading(false)
+      setLoadingScenes(false)
     }
   }
 
-  const deleteProject = async (id) => {
-    await fetch(`${API}/projects/${id}`, { method: 'DELETE' })
-    setProjects(projects.filter(p => p.id !== id))
-    if (selectedProject?.id === id) setSelectedProject(null)
+  // ② 生成角色详情
+  const handleGenerateCharacters = async () => {
+    if (!characters.length) { setError('请先提取场景'); return }
+    setLoadingChars(true)
+    setError('')
+    try {
+      const res = await fetch(`${API}/generate-characters`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ characters: characters.map(c => c.name) }),
+      })
+      const data = await res.json()
+      setCharacters(data.characters || [])
+      setStep('characters')
+      await saveProject({ characters: data.characters, status: 'characters_done' })
+    } catch {
+      setError('角色生成失败')
+    } finally {
+      setLoadingChars(false)
+    }
+  }
+
+  // ③ 生成剧本
+  const handleGenerateScript = async () => {
+    setLoadingScript(true)
+    setError('')
+    try {
+      const res = await fetch(`${API}/generate-script`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: novelText, title: selectedProject?.name }),
+      })
+      const data = await res.json()
+      setScript(data.script || '')
+      setStep('script')
+      await saveProject({ script: data.script, status: 'script_done' })
+    } catch {
+      setError('剧本生成失败')
+    } finally {
+      setLoadingScript(false)
+    }
+  }
+
+  // ④ 生成分镜
+  const handleGenerateStoryboard = async () => {
+    if (!scenes.length) { setError('请先提取场景'); return }
+    setLoadingBoard(true)
+    setError('')
+    try {
+      const res = await fetch(`${API}/generate-storyboard`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(scenes),
+      })
+      const data = await res.json()
+      setStoryboards(data.storyboards || [])
+      setStep('storyboard')
+      await saveProject({ storyboards: data.storyboards, status: 'done' })
+    } catch {
+      setError('分镜生成失败')
+    } finally {
+      setLoadingBoard(false)
+    }
+  }
+
+  const saveProject = async (updates) => {
+    if (!selectedProject) return
+    await fetch(`${API}/projects/${selectedProject.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...updates, novel_text: novelText }),
+    })
+    const res = await fetch(`${API}/projects/${selectedProject.id}`)
+    if (res.ok) {
+      const updated = await res.json()
+      setSelectedProject(updated)
+      setProjects(projects => projects.map(p => p.id === updated.id ? updated : p))
+    }
   }
 
   return (
     <div style={{ background: S.bg, minHeight: '100vh', color: S.text }}>
       {/* 顶栏 */}
-      <header style={{
-        position: 'sticky', top: 0, zIndex: 50,
-        background: 'rgba(10, 10, 15, 0.9)',
-        backdropFilter: 'blur(20px)',
-        borderBottom: `1px solid ${S.cardBorder}`,
-      }}>
+      <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(10,10,15,0.92)', backdropFilter: 'blur(20px)', borderBottom: `1px solid ${S.cardBorder}` }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 10,
-              background: `linear-gradient(135deg, ${S.accent}, ${S.accentLight})`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
-            }}>📖</div>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${S.accent}, ${S.accentLight})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>📖</div>
             <span style={{ fontSize: 16, fontWeight: 600 }}>小说工作站</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <span style={{ fontSize: 13, color: S.textMuted }}>
-              你好，<span style={{ color: S.accentLight, fontWeight: 500 }}>{user?.displayName}</span>
-            </span>
-            <button
-              onClick={logout}
-              style={{ background: 'none', border: 'none', color: S.textMuted, cursor: 'pointer', fontSize: 13, padding: '4px 8px', borderRadius: 6 }}
-            >
-              退出
-            </button>
+            <span style={{ fontSize: 13, color: S.textMuted }}>你好，<span style={{ color: S.accentLight, fontWeight: 500 }}>{user?.displayName}</span></span>
+            <button onClick={logout} style={{ background: 'none', border: 'none', color: S.textMuted, cursor: 'pointer', fontSize: 13, padding: '4px 8px', borderRadius: 6 }}>退出</button>
           </div>
         </div>
       </header>
 
-      {/* 主内容 */}
-      <main style={{ maxWidth: 1200, margin: '0 auto', padding: '24px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 24 }}>
+      <main style={{ maxWidth: 1200, margin: '0 auto', padding: '24px', display: 'grid', gridTemplateColumns: '280px 1fr', gap: 24 }}>
 
-          {/* 左侧项目栏 */}
-          <div style={{ position: 'sticky', top: 80, alignSelf: 'start' }}>
-            <Card>
-              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, color: S.text }}>我的项目</div>
-
-              {/* 新建 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
-                <input
-                  value={title}
-                  onChange={e => setTitle(e.target.value)}
-                  onFocus={() => setInputFocus(true)}
-                  onBlur={() => setInputFocus(false)}
-                  placeholder="项目名称..."
-                  style={{
-                    width: '100%', padding: '10px 12px',
-                    background: inputFocus ? 'rgba(26,26,38,0.95)' : S.inputBg,
-                    border: `1.5px solid ${inputFocus ? S.accent : 'rgba(255,255,255,0.06)'}`,
-                    borderRadius: 10, color: S.text, fontSize: 13, outline: 'none',
-                    boxShadow: inputFocus ? `0 0 0 3px ${S.accentGlow}` : 'none',
-                    transition: 'all 0.2s',
-                  }}
-                />
-                <button
-                  onClick={createProject}
-                  disabled={creatingProject || !title.trim()}
-                  style={{
-                    width: '100%', padding: '9px',
-                    background: creatingProject ? S.textMuted : S.accent,
-                    border: 'none', borderRadius: 10,
-                    color: '#fff', fontSize: 13, fontWeight: 600, cursor: creatingProject ? 'not-allowed' : 'pointer',
-                    opacity: (!title.trim() && !creatingProject) ? 0.5 : 1,
-                    transition: 'all 0.2s',
-                  }}
-                >
-                  {creatingProject ? '创建中...' : '+ 新建项目'}
-                </button>
-              </div>
-
-              {/* 列表 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 400, overflowY: 'auto' }}>
-                {projects.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: '32px 0', color: S.textMuted, fontSize: 13 }}>
-                    暂无项目 ✨
-                  </div>
-                )}
-                {projects.map(p => (
-                  <div
-                    key={p.id}
-                    onClick={() => { setSelectedProject(p); setResult(null); setStep('input') }}
-                    style={{
-                      padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
-                      background: selectedProject?.id === p.id ? 'rgba(124,92,252,0.08)' : 'rgba(255,255,255,0.02)',
-                      border: `1.5px solid ${selectedProject?.id === p.id ? S.accent : 'transparent'}`,
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 500, color: S.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
-                        <div style={{ fontSize: 11, color: S.textMuted, marginTop: 2 }}>
-                          {new Date(p.updated_at).toLocaleDateString('zh-CN')}
-                        </div>
-                      </div>
-                      <button
-                        onClick={e => { e.stopPropagation(); deleteProject(p.id) }}
-                        style={{ background: 'none', border: 'none', color: S.textMuted, cursor: 'pointer', fontSize: 12, padding: '2px 4px', flexShrink: 0 }}
-                      >
-                        ✕
-                      </button>
+        {/* 左侧项目栏 */}
+        <div style={{ position: 'sticky', top: 80, alignSelf: 'start' }}>
+          <Card>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>我的项目</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+              <input value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="项目名称..."
+                style={{ width: '100%', padding: '10px 12px', background: S.inputBg, border: `1.5px solid rgba(255,255,255,0.06)`, borderRadius: 10, color: S.text, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                onFocus={e => e.target.style.borderColor = S.accent}
+                onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.06)'}
+              />
+              <button onClick={createProject} disabled={creatingProject || !projectName.trim()}
+                style={{ width: '100%', padding: '9px', background: S.accent, border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: (!projectName.trim()) ? 0.5 : 1 }}>
+                {creatingProject ? '创建中...' : '+ 新建项目'}
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 400, overflowY: 'auto' }}>
+              {projects.length === 0 && <div style={{ textAlign: 'center', padding: '32px 0', color: S.textMuted, fontSize: 13 }}>暂无项目 ✨</div>}
+              {projects.map(p => (
+                <div key={p.id} onClick={() => selectProject(p)}
+                  style={{ padding: '10px 12px', borderRadius: 10, cursor: 'pointer', background: selectedProject?.id === p.id ? 'rgba(124,92,252,0.08)' : 'rgba(255,255,255,0.02)', border: `1.5px solid ${selectedProject?.id === p.id ? S.accent : 'transparent'}`, transition: 'all 0.2s' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: S.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                      <div style={{ fontSize: 11, color: S.textMuted, marginTop: 2 }}>{new Date(p.updated_at).toLocaleDateString('zh-CN')}</div>
                     </div>
-                    <div style={{ marginTop: 6 }}>
-                      <span style={{
-                        display: 'inline-block', padding: '2px 8px', borderRadius: 20,
-                        fontSize: 10, fontWeight: 500,
-                        background: p.status === 'done' ? 'rgba(34,197,94,0.1)' : 'rgba(124,92,252,0.1)',
-                        color: p.status === 'done' ? '#22c55e' : S.accent,
-                      }}>
-                        {p.status === 'done' ? '✓ 已完成' : '📝 草稿'}
-                      </span>
-                    </div>
+                    <button onClick={e => deleteProject(p.id, e)} style={{ background: 'none', border: 'none', color: S.textMuted, cursor: 'pointer', fontSize: 12, padding: '2px 4px', flexShrink: 0 }}>✕</button>
                   </div>
-                ))}
-              </div>
+                  <div style={{ marginTop: 6 }}>
+                    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 500, background: p.status === 'done' ? 'rgba(34,197,94,0.1)' : 'rgba(124,92,252,0.1)', color: p.status === 'done' ? '#22c55e' : S.accent }}>
+                      {p.status === 'done' ? '✓ 已完成' : p.status === 'script_done' ? '📄 剧本' : p.status === 'characters_done' ? '👥 角色' : p.status === 'scenes_done' ? '🎬 场景' : '📝 草稿'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+
+        {/* 右侧工作区 */}
+        <div>
+          {!selectedProject ? (
+            <Card style={{ textAlign: 'center', padding: '80px 40px' }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>📚</div>
+              <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>选择或创建一个项目</div>
+              <div style={{ fontSize: 13, color: S.textMuted }}>在左侧选择项目，或创建新项目开始创作</div>
             </Card>
-          </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-          {/* 右侧工作区 */}
-          <div>
-            {!selectedProject ? (
-              <Card style={{ textAlign: 'center', padding: '80px 40px' }}>
-                <div style={{ fontSize: 48, marginBottom: 16 }}>📚</div>
-                <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8, color: S.text }}>选择或创建一个项目</div>
-                <div style={{ fontSize: 13, color: S.textMuted }}>在左侧选择项目，或创建新项目开始创作</div>
+              {/* 小说输入 */}
+              <Card>
+                <SectionTitle icon="📖">小说文本</SectionTitle>
+                <textarea value={novelText} onChange={e => { setNovelText(e.target.value); setTotalChars(e.target.value.length) }}
+                  placeholder="在这里粘贴你的小说文本..."
+                  style={{ width: '100%', height: 160, padding: 12, background: S.inputBg, border: `1.5px solid rgba(255,255,255,0.06)`, borderRadius: 10, color: S.text, fontSize: 13, fontFamily: 'monospace', lineHeight: 1.7, resize: 'none', outline: 'none', boxSizing: 'border-box' }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                  <span style={{ fontSize: 12, color: S.textMuted }}>{totalChars} 字</span>
+                  <ActionBtn onClick={handleExtractScenes} loading={loadingScenes} disabled={!novelText.trim()}>
+                    ① 提取场景
+                  </ActionBtn>
+                </div>
               </Card>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                {/* 步骤条 */}
-                <Card><StepBar step={step} /></Card>
 
-                {/* 输入区 */}
+              {error && <div style={{ padding: '10px 16px', borderRadius: 10, background: 'rgba(252,92,92,0.08)', color: S.error, fontSize: 13, border: '1px solid rgba(252,92,92,0.2)' }}>⚠ {error}</div>}
+
+              {/* 场景结果 */}
+              {scenes.length > 0 && (
                 <Card>
-                  <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span>✍️</span> 输入小说文本
+                  <SectionTitle icon="🎬">场景列表 ({scenes.length})</SectionTitle>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflowY: 'auto' }}>
+                    {scenes.map((s, i) => (
+                      <div key={i} style={{ background: S.inputBg, borderRadius: 10, padding: 12, border: '1px solid rgba(255,255,255,0.04)' }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: S.text, marginBottom: 4 }}>
+                          {i + 1}. {s.location} - {s.time}
+                        </div>
+                        <div style={{ fontSize: 12, color: S.textMuted, marginBottom: 4 }}>{s.summary}</div>
+                        {s.characters?.length > 0 && (
+                          <div style={{ fontSize: 11, color: S.accentLight }}>👥 {s.characters.join('、')}</div>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                  {createdMsg && (
-                    <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(34,197,94,0.08)', color: '#22c55e', fontSize: 13, marginBottom: 12, border: '1px solid rgba(34,197,94,0.2)' }}>
-                      {createdMsg}
-                    </div>
-                  )}
-                  <textarea
-                    value={novelText}
-                    onChange={e => setNovelText(e.target.value)}
-                    placeholder="在这里粘贴你的小说文本..."
-                    style={{
-                      width: '100%', height: 240, padding: '12px',
-                      background: S.inputBg, border: `1.5px solid rgba(255,255,255,0.06)`,
-                      borderRadius: 10, color: S.text, fontSize: 13,
-                      fontFamily: 'monospace', lineHeight: 1.7, resize: 'none', outline: 'none',
-                      boxSizing: 'border-box',
-                    }}
-                  />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-                    <span style={{ fontSize: 12, color: S.textMuted }}>{novelText.length} 字</span>
-                    <button
-                      onClick={runPipeline}
-                      disabled={loading || !novelText.trim()}
-                      style={{
-                        padding: '10px 24px',
-                        background: loading ? S.textMuted : `linear-gradient(135deg, ${S.accent}, ${S.accentLight})`,
-                        border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 600,
-                        cursor: loading ? 'not-allowed' : 'pointer',
-                        boxShadow: `0 4px 16px ${S.accentGlow}`,
-                        transition: 'all 0.2s',
-                      }}
-                    >
-                      {loading ? 'AI 创作中...' : '🚀 开始创作'}
-                    </button>
+                  <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
+                    <ActionBtn onClick={handleGenerateCharacters} loading={loadingChars} disabled={!scenes.length}>
+                      ② 生成角色详情
+                    </ActionBtn>
+                    <ActionBtn onClick={handleGenerateScript} loading={loadingScript} disabled={!scenes.length} variant="secondary">
+                      ③ 生成剧本
+                    </ActionBtn>
+                    <ActionBtn onClick={handleGenerateStoryboard} loading={loadingBoard} disabled={!scenes.length} variant="secondary">
+                      ④ 生成分镜
+                    </ActionBtn>
                   </div>
                 </Card>
+              )}
 
-                {error && (
-                  <div style={{ padding: '10px 16px', borderRadius: 10, background: 'rgba(252,92,92,0.08)', color: S.error, fontSize: 13, border: '1px solid rgba(252,92,92,0.2)' }}>
-                    ⚠ {error}
-                  </div>
-                )}
-
-                {/* 结果 */}
-                {result && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                    {/* 统计 */}
-                    <Card>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                        {[
-                          { label: `${result.total_chars} 字`, icon: '📝' },
-                          { label: `${result.characters?.length || 0} 角色`, icon: '👥' },
-                          { label: `${result.scenes?.length || 0} 场景`, icon: '🎬' },
-                          { label: `${result.script_scene_count || 0} 剧本场景`, icon: '📄' },
-                        ].map((t, i) => (
-                          <span key={i} style={{
-                            padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500,
-                            background: 'rgba(124,92,252,0.08)', color: S.accentLight,
-                            border: '1px solid rgba(124,92,252,0.15)',
-                          }}>
-                            {t.icon} {t.label}
-                          </span>
-                        ))}
-                      </div>
-                    </Card>
-
-                    {/* 剧本 */}
-                    <Card>
-                      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span>📄</span> 生成的剧本
-                      </div>
-                      <pre style={{
-                        whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                        background: S.inputBg, borderRadius: 10, padding: 16,
-                        fontSize: 13, lineHeight: 1.7, color: S.text,
-                        fontFamily: 'monospace', maxHeight: 300, overflowY: 'auto',
-                        margin: 0,
-                      }}>
-                        {result.script}
-                      </pre>
-                    </Card>
-
-                    {/* 分镜 */}
-                    <Card>
-                      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span>🎞️</span> 分镜提示词
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        {(result.storyboards || []).map((sb, i) => (
-                          <div key={i} style={{
-                            background: S.inputBg, borderRadius: 10, padding: 14,
-                            border: '1px solid rgba(255,255,255,0.04)',
-                          }}>
-                            <div style={{ display: 'flex', gap: 10 }}>
-                              <span style={{ fontSize: 18, flexShrink: 0 }}>🎬</span>
-                              <div style={{ minWidth: 0 }}>
-                                <div style={{ fontSize: 13, fontWeight: 500, color: S.text, marginBottom: 4 }}>
-                                  场景 {sb.scene_id || i + 1}：{sb.visual_description?.slice(0, 80)}
-                                </div>
-                                <div style={{ fontSize: 11, color: S.textMuted, marginBottom: 8 }}>
-                                  镜头：{sb.camera_angle} · 氛围：{sb.mood}
-                                </div>
-                                <div style={{
-                                  background: 'rgba(255,255,255,0.03)', borderRadius: 8,
-                                  padding: '8px 12px', fontSize: 12, fontFamily: 'monospace',
-                                  color: S.accentLight, wordBreak: 'break-all',
-                                }}>
-                                  {sb.jimeng_prompt}
-                                </div>
-                              </div>
-                            </div>
+              {/* 角色结果 */}
+              {characters.length > 0 && (
+                <Card>
+                  <SectionTitle icon="👥">角色详情 ({characters.length})</SectionTitle>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {characters.map((c, i) => (
+                      <div key={i} style={{ background: S.inputBg, borderRadius: 10, padding: 14, border: '1px solid rgba(255,255,255,0.04)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                          <div>
+                            <span style={{ fontSize: 14, fontWeight: 600, color: S.text }}>{c.name}</span>
+                            {c.role && <span style={{ fontSize: 11, color: S.accentLight, marginLeft: 8 }}>{c.role}</span>}
                           </div>
-                        ))}
+                        </div>
+                        {c.age_appearance && <div style={{ fontSize: 12, color: S.textMuted, marginBottom: 4 }}>外貌：{c.age_appearance}</div>}
+                        {c.personality && <div style={{ fontSize: 12, color: S.textMuted, marginBottom: 6 }}>性格：{c.personality}</div>}
+                        {c.visual_prompt && (
+                          <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '8px 12px', fontSize: 11, fontFamily: 'monospace', color: S.accentLight, wordBreak: 'break-all' }}>
+                            🎨 {c.visual_prompt}
+                          </div>
+                        )}
                       </div>
-                    </Card>
+                    ))}
                   </div>
-                )}
-              </div>
-            )}
-          </div>
+                  <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
+                    <ActionBtn onClick={handleGenerateScript} loading={loadingScript} disabled={!characters.length}>
+                      ③ 生成剧本
+                    </ActionBtn>
+                    <ActionBtn onClick={handleGenerateStoryboard} loading={loadingBoard} disabled={!characters.length} variant="secondary">
+                      ④ 生成分镜
+                    </ActionBtn>
+                  </div>
+                </Card>
+              )}
+
+              {/* 剧本结果 */}
+              {script && (
+                <Card>
+                  <SectionTitle icon="📄">生成的剧本</SectionTitle>
+                  <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: S.inputBg, borderRadius: 10, padding: 16, fontSize: 13, lineHeight: 1.7, color: S.text, fontFamily: 'monospace', maxHeight: 400, overflowY: 'auto', margin: 0 }}>
+                    {script}
+                  </pre>
+                  <div style={{ marginTop: 16 }}>
+                    <ActionBtn onClick={handleGenerateStoryboard} loading={loadingBoard} disabled={!script}>
+                      ④ 生成分镜
+                    </ActionBtn>
+                  </div>
+                </Card>
+              )}
+
+              {/* 分镜结果 */}
+              {storyboards.length > 0 && (
+                <Card>
+                  <SectionTitle icon="🎞️">分镜提示词 ({storyboards.length})</SectionTitle>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {storyboards.map((sb, i) => (
+                      <div key={i} style={{ background: S.inputBg, borderRadius: 10, padding: 14, border: '1px solid rgba(255,255,255,0.04)' }}>
+                        <div style={{ display: 'flex', gap: 10 }}>
+                          <span style={{ fontSize: 18, flexShrink: 0 }}>🎬</span>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 500, color: S.text, marginBottom: 4 }}>
+                              场景 {sb.scene_id || i + 1}：{sb.visual_description}
+                            </div>
+                            <div style={{ fontSize: 11, color: S.textMuted, marginBottom: 8 }}>
+                              镜头：{sb.camera_angle} · 氛围：{sb.mood}
+                            </div>
+                            {sb.jimeng_prompt && (
+                              <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '8px 12px', fontSize: 12, fontFamily: 'monospace', color: S.accentLight, wordBreak: 'break-all' }}>
+                                🎨 {sb.jimeng_prompt}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+            </div>
+          )}
         </div>
       </main>
     </div>

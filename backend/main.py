@@ -60,6 +60,8 @@ class ProjectUpdate(BaseModel):
     novel_text: Optional[str] = None
     script: Optional[str] = None
     storyboards: Optional[list] = None
+    characters: Optional[list] = None
+    scenes: Optional[list] = None
     settings: Optional[dict] = None
     status: Optional[str] = None
 
@@ -70,6 +72,8 @@ class ProjectResponse(BaseModel):
     novel_text: Optional[str]
     script: Optional[str]
     storyboards: Optional[list]
+    characters: Optional[list]
+    scenes: Optional[list]
     settings: Optional[dict]
     status: str
     created_at: datetime
@@ -77,6 +81,10 @@ class ProjectResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class CharactersRequest(BaseModel):
+    characters: list[str]
+    scenes: Optional[list[dict]] = None
 
 class NovelInput(BaseModel):
     text: str
@@ -231,6 +239,44 @@ async def extract_scenes(input: NovelInput):
         scenes=data.get("scenes", []),
         total_chars=len(input.text),
     )
+
+
+# ─── 1.5 角色生成 ─────────────────────────────────────────
+@app.post("/api/generate-characters")
+async def generate_characters(req: CharactersRequest):
+    """
+    为提取到的角色列表生成详细描述和视觉提示词
+    """
+    if not req.characters:
+        raise HTTPException(400, "角色列表为空")
+
+    system_prompt = """你是一个专业的影视美术设计师和人物设定专家。
+
+收到角色列表后，为每个角色生成详细的视觉描述信息。
+
+输出 JSON 数组，每个角色包含：
+- name: 角色姓名
+- role: 角色定位（例：男主角、女主角、反派等）
+- age_appearance: 外貌年龄描述
+- personality: 性格特点
+- visual_prompt: AI绘图提示词（用于生成角色形象图），格式：
+  人物类型 + 具体外貌描述 + 服装风格 + 光影氛围 + 电影级画面质感，专业摄影作品，8K超高清，无噪点，杰作
+
+输出 JSON 数组，不要其他文字。"""
+
+    chars_text = json.dumps(req.characters[:20], ensure_ascii=False)
+    raw = await call_minimax(system_prompt, f"角色列表：\n{chars_text}")
+
+    try:
+        match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
+        if match:
+            data = json.loads(match.group(1))
+        else:
+            data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise HTTPException(500, f"AI 返回格式错误: {e}\n\n原始输出:\n{raw[:500]}")
+
+    return {"characters": data, "total": len(data)}
 
 
 # ─── 2. 剧本生成 ───────────────────────────────────────────
