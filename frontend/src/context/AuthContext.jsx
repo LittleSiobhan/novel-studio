@@ -17,7 +17,7 @@ export function AuthProvider({ children }) {
 
   const login = async (username, password) => {
     // 演示模式：硬编码一个账号
-    if (username === 'writer' && password === 'novel2026') {
+    if (username === 'littleee' && password === 'little2026') {
       const userData = { username, displayName: '创作者', role: 'writer' }
       localStorage.setItem('novelstudio_user', JSON.stringify(userData))
       setUser(userData)

@@ -107,14 +107,7 @@ export default function Login() {
             </button>
           </form>
 
-          {/* 提示信息 */}
-          <div className="mt-6 p-4 bg-[var(--surface-warm)] rounded-xl">
-            <p className="text-xs text-[var(--text-muted)] text-center">
-              📝 演示账号：<span className="font-mono text-[var(--accent-dark)]">writer</span>
-              &nbsp;/&nbsp;
-              <span className="font-mono text-[var(--accent-dark)]">novel2026</span>
-            </p>
-          </div>
+
         </div>
 
         {/* 底部 */}
