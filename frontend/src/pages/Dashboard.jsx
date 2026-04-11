@@ -66,7 +66,7 @@ function CharacterTable({ characters }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                 <span style={{ color: S.accentLight, fontWeight: 700, fontSize: 14 }}>{c.name}</span>
                 <span style={{ color: S.textMuted, fontSize: 11 }}>{c.role || '未定位'}</span>
-                <span style={{ color: S.textMuted, fontSize: 11 }}>第{c.appearances || '?'}场</span>
+                <span style={{ color: S.textMuted, fontSize: 11 }}>{c.appearances || '?'}</span>
               </div>
               <p style={{
                 fontSize: 12.5,
@@ -186,7 +186,7 @@ function PropTable({ props }) {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                 <span style={{ color: S.accentLight, fontWeight: 700, fontSize: 14 }}>{p.name}</span>
-                <span style={{ color: S.textMuted, fontSize: 11 }}>第{p.appearances || '?'}场</span>
+                <span style={{ color: S.textMuted, fontSize: 11 }}>{p.appearances || '?'}场</span>
                 {p.changes && p.changes !== '无变化' && (
                   <span style={{ color: S.warn, fontSize: 11 }}>⚠ {p.changes}</span>
                 )}
