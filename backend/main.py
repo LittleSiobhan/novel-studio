@@ -104,6 +104,11 @@ class PromptRequest(BaseModel):
     characters: Optional[list[dict]] = None  # 选中的角色 [{name, visual_prompt}]
     props: Optional[list[dict]] = None   # 选中的道具 [{name, visual_prompt}]
 
+class ExtractAssetsRequest(BaseModel):
+    """综合素材提取请求"""
+    script: str
+    title: Optional[str] = "未命名"
+
 class ScriptGenerateResult(BaseModel):
     script: str
     scene_count: int
@@ -298,6 +303,110 @@ async def extract_props(req: PropsRequest):
     except json.JSONDecodeError as e:
         raise HTTPException(500, f"AI 返回格式错误: {e}\n\n{raw[:300]}")
     return {"props": data, "total": len(data)}
+
+
+# ─── 1.8 综合素材提取（详细版） ───────────────────────────
+@app.post("/api/extract-full-assets")
+async def extract_full_assets(req: ExtractAssetsRequest):
+    """
+    详细提取剧本中的角色、场景、道具三大类素材，
+    输出完整结构化表格，参照剧本素材库提取标准。
+    """
+    # Step 1: 提取角色
+    chars_prompt = f"""你是一个专业的影视美术设计师和人物设定专家。
+
+分析以下剧本，提取所有出现的角色（含路人、配角），输出JSON数组。
+
+每个角色必须包含：
+- name: 角色姓名
+- role: 角色定位（主角/配角/反派/路人等）
+- gender: 性别（男/女/未知）
+- age: 年龄描述（如"25-30岁"）
+- height: 身高描述（如"175cm，挺拔修长"）
+- body_type: 体型（纤瘦/匀称/微胖/健壮/魁梧等）
+- hairstyle: 发型具体描述
+- hair_color: 发色+光泽感
+- face_shape: 脸型+细节
+- eyes: 眼形+瞳色+细节
+- skin: 肤色+质感
+- outfit: 款式+颜色+材质+细节
+- accessories: 所有饰品（无则填"无"）
+- personality: 性格+剧本细节佐证
+- appearances: 出场场次（如"第1、3、5场"）
+
+只输出JSON数组，不要其他文字。"""
+
+    raw_chars = await call_minimax(chars_prompt, f"剧本：\n{req.script[:6000]}")
+    try:
+        match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw_chars, re.DOTALL)
+        characters = json.loads(match.group(1)) if match else json.loads(raw_chars)
+    except:
+        characters = []
+
+    # Step 2: 提取场景
+    scenes_prompt = f"""你是一个专业的影视分镜师和场景美术设计师。
+
+分析以下剧本，提取所有出现的场景，输出JSON数组。
+
+每个场景必须包含：
+- scene_id: 场景编号
+- scene_name: 精确场景名称（含具体地点，如"客厅（主角家）"）
+- appearances: 出场场次
+- time: 精确时刻+天气（如"深夜11点""阴天午后"）
+- weather: 天气（室外明确天气；室内填"室内无天气影响，有窗补充窗外X天气"）
+- light_source: 光源类型+质感+氛围（如"暖黄吊灯，光线柔和有晕，营造温馨感"）
+- space_type: 大类+细分（如"室内住宅-主卧""室外街道-老街区"）
+- space_scale: 面积估算（如"约15㎡""开阔视野无遮挡"）
+- height: 层高或空间高度
+- main_elements: 核心陈设物+细节描述
+- foreground: 前景元素+具体描述
+- mood: 情绪词+场景细节支撑
+- style: 整体风格+细节（简约现代/复古怀旧/中式古典/ins风等）
+- shot_type: 景别（全景/中景/近景/特写/远景）
+- camera_angle: 视角设定（平视/俯视/仰视/侧视+补充说明）
+- visual_prompt_no_chars: 文生图英文描述词（严禁出现任何人物，仅描述空间光线氛围陈设）
+- notes: 备注（重复出场情况）
+
+只输出JSON数组，不要其他文字。"""
+
+    raw_scenes = await call_minimax(scenes_prompt, f"剧本：\n{req.script[:6000]}")
+    try:
+        match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw_scenes, re.DOTALL)
+        scenes = json.loads(match.group(1)) if match else json.loads(raw_scenes)
+    except:
+        scenes = []
+
+    # Step 3: 提取道具
+    props_prompt = f"""你是一个专业的影视美术指导。
+
+分析以下剧本，提取所有重要的道具、物品，输出JSON数组。
+
+每个道具必须包含：
+- name: 道具精确名称
+- appearances: 出场场次
+- changes: 道具变化（如"第1集为新品，第5集封面磨损破旧"，无则填"无变化"）
+- visual_prompt: 外观+颜色+材质+尺寸+细节+状态描述词
+- notes: 备注
+
+只输出JSON数组，不要其他文字。"""
+
+    raw_props = await call_minimax(props_prompt, f"剧本：\n{req.script[:6000]}")
+    try:
+        match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw_props, re.DOTALL)
+        props = json.loads(match.group(1)) if match else json.loads(raw_props)
+    except:
+        props = []
+
+    return {
+        "characters": characters,
+        "scenes": scenes,
+        "props": props,
+        "summary": {
+            "total_characters": len(characters),
+            "total_scenes": len(scenes),
+            "total_props": len(props),
+        }
+    }
 
 
 # ─── 1.7 统一生成提示词 ────────────────────────────────────

@@ -7,7 +7,7 @@ const S = {
   bg: '#0a0a0f', card: 'rgba(18, 18, 26, 0.9)', cardBorder: 'rgba(255,255,255,0.07)',
   inputBg: 'rgba(26, 26, 38, 0.8)', accent: '#7c5cfc', accentLight: '#a78bfa',
   accentGlow: 'rgba(124, 92, 252, 0.15)', text: '#e8e8ed', textMuted: '#6b6b7a',
-  error: '#fc5c5c', success: '#22c55e',
+  error: '#fc5c5c', success: '#22c55e', warn: '#f59e0b',
 }
 
 function Card({ children, style }) {
@@ -31,6 +31,145 @@ function Btn({ children, onClick, loading, disabled, secondary }) {
   )
 }
 
+// ── 角色详细表格 ──────────────────────────────────────────
+function CharacterTable({ characters }) {
+  const [expanded, setExpanded] = useState({})
+  if (!characters?.length) return null
+  return (
+    <Card style={{ marginTop: 16 }}>
+      <SectionTitle icon="👥">角色汇总表（{characters.length}）</SectionTitle>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${S.cardBorder}` }}>
+              {['角色名','定位','性别','年龄','身高','体型','发型','发色','脸型','眼睛','肤色','服装','饰品','性格','文生图描述词'].map(h => (
+                <th key={h} style={{ padding: '8px 6px', textAlign: 'left', color: S.textMuted, fontWeight: 500, whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {characters.map((c, i) => (
+              <tr key={i} style={{ borderBottom: `1px solid rgba(255,255,255,0.03)` }}>
+                {[
+                  <span style={{ color: S.accentLight, fontWeight: 600 }}>{c.name}</span>,
+                  c.role || '-',
+                  c.gender || '-',
+                  c.age || '-',
+                  c.height || '-',
+                  c.body_type || '-',
+                  c.hairstyle || '-',
+                  c.hair_color || '-',
+                  c.face_shape || '-',
+                  c.eyes || '-',
+                  c.skin || '-',
+                  c.outfit || '-',
+                  c.accessories || '无',
+                  c.personality || '-',
+                  <span style={{ maxWidth: 200, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.visual_prompt}>{c.visual_prompt || '-'}</span>,
+                ].map((val, j) => (
+                  <td key={j} style={{ padding: '10px 6px', color: S.text, verticalAlign: 'top', lineHeight: 1.5 }}>{val}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p style={{ fontSize: 11, color: S.textMuted, marginTop: 8 }}>
+        共 {characters.length} 个角色（含配角/路人）
+      </p>
+    </Card>
+  )
+}
+
+// ── 场景详细表格 ──────────────────────────────────────────
+function SceneTable({ scenes }) {
+  if (!scenes?.length) return null
+  return (
+    <Card style={{ marginTop: 16 }}>
+      <SectionTitle icon="🎬">场景汇总表（{scenes.length}）</SectionTitle>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${S.cardBorder}` }}>
+              {['编号','场景名称','场次','时间','天气','光源','空间类型','面积','高度','主体陈设','前景','氛围','风格','景别','视角','文生图描述词（无人物）'].map(h => (
+                <th key={h} style={{ padding: '8px 6px', textAlign: 'left', color: S.textMuted, fontWeight: 500, whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {scenes.map((s, i) => (
+              <tr key={i} style={{ borderBottom: `1px solid rgba(255,255,255,0.03)` }}>
+                {[
+                  <span style={{ color: S.accent }}>{s.scene_id || i + 1}</span>,
+                  s.scene_name || '-',
+                  s.appearances || '-',
+                  s.time || '-',
+                  s.weather || '-',
+                  <span style={{ maxWidth: 120, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.light_source || '-'}</span>,
+                  s.space_type || '-',
+                  s.space_scale || '-',
+                  s.height || '-',
+                  <span style={{ maxWidth: 100, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.main_elements || '-'}</span>,
+                  s.foreground || '-',
+                  s.mood || '-',
+                  s.style || '-',
+                  s.shot_type || '-',
+                  s.camera_angle || '-',
+                  <span style={{ maxWidth: 200, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: S.accentLight, fontFamily: 'monospace', fontSize: 10 }} title={s.visual_prompt_no_chars}>{s.visual_prompt_no_chars || '-'}</span>,
+                ].map((val, j) => (
+                  <td key={j} style={{ padding: '10px 6px', color: S.text, verticalAlign: 'top', lineHeight: 1.5 }}>{val}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p style={{ fontSize: 11, color: S.textMuted, marginTop: 8 }}>
+        共 {scenes.length} 个场景，场景描述词已去除所有人物元素
+      </p>
+    </Card>
+  )
+}
+
+// ── 道具详细表格 ──────────────────────────────────────────
+function PropTable({ props }) {
+  if (!props?.length) return null
+  return (
+    <Card style={{ marginTop: 16 }}>
+      <SectionTitle icon="🎁">道具汇总表（{props.length}）</SectionTitle>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${S.cardBorder}` }}>
+              {['道具名称','出场','变化','文生图描述词','备注'].map(h => (
+                <th key={h} style={{ padding: '8px 6px', textAlign: 'left', color: S.textMuted, fontWeight: 500, whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {props.map((p, i) => (
+              <tr key={i} style={{ borderBottom: `1px solid rgba(255,255,255,0.03)` }}>
+                {[
+                  <span style={{ color: S.accentLight, fontWeight: 600 }}>{p.name}</span>,
+                  p.appearances || '-',
+                  p.changes || '无变化',
+                  <span style={{ maxWidth: 300, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: 10, color: S.accentLight }} title={p.visual_prompt}>{p.visual_prompt || '-'}</span>,
+                  p.notes || '-',
+                ].map((val, j) => (
+                  <td key={j} style={{ padding: '10px 6px', color: S.text, verticalAlign: 'top', lineHeight: 1.5 }}>{val}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p style={{ fontSize: 11, color: S.textMuted, marginTop: 8 }}>
+        共 {props.length} 个道具
+      </p>
+    </Card>
+  )
+}
+
 export default function Dashboard() {
   const { user, logout } = useAuth()
   const [projects, setProjects] = useState([])
@@ -41,27 +180,12 @@ export default function Dashboard() {
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
 
-  // 提取结果
-  const [scenes, setScenes] = useState([])
-  const [characters, setCharacters] = useState([])
-  const [props, setProps] = useState([])
-
-  // 用户选择（勾选）
-  const [selScenes, setSelScenes] = useState({})
-  const [selChars, setSelChars] = useState({})
-  const [selProps, setSelProps] = useState({})
-
-  // 生成结果（含提示词）
-  const [genScenes, setGenScenes] = useState([])
-  const [genChars, setGenChars] = useState([])
-  const [genProps, setGenProps] = useState([])
+  // 详细素材
+  const [assetData, setAssetData] = useState(null) // {characters, scenes, props}
 
   // 加载状态
   const [loadingScript, setLoadingScript] = useState(false)
-  const [loadingScenes, setLoadingScenes] = useState(false)
-  const [loadingChars, setLoadingChars] = useState(false)
-  const [loadingProps, setLoadingProps] = useState(false)
-  const [loadingPrompts, setLoadingPrompts] = useState(false)
+  const [loadingAssets, setLoadingAssets] = useState(false)
 
   useEffect(() => { loadProjects() }, [])
 
@@ -92,21 +216,11 @@ export default function Dashboard() {
     setSelected(p)
     setNovelText(p.novel_text || '')
     setScript(p.script || '')
-    setScenes(p.scenes || [])
-    setCharacters(p.characters || [])
-    setProps(p.props || [])
-    setSelScenes({})
-    setSelChars({})
-    setSelProps({})
-    setGenScenes([])
-    setGenChars([])
-    setGenProps([])
+    setAssetData(p.characters ? { characters: p.characters, scenes: p.scenes || [], props: p.props || [] } : null)
   }
 
   const resetWork = () => {
-    setNovelText(''); setScript(''); setScenes([]); setCharacters([]); setProps([])
-    setSelScenes({}); setSelChars({}); setSelProps({})
-    setGenScenes([]); setGenChars([]); setGenProps([])
+    setNovelText(''); setScript(''); setAssetData(null)
   }
 
   const deleteProject = async (id, e) => {
@@ -135,108 +249,31 @@ export default function Dashboard() {
       })
       const d = await r.json()
       setScript(d.script)
-      resetExtractions()
+      setAssetData(null)
       await saveProject({ script: d.script, status: 'script_done' })
     } catch { setError('剧本生成失败') } finally { setLoadingScript(false) }
   }
 
-  const resetExtractions = () => {
-    setScenes([]); setCharacters([]); setProps([])
-    setSelScenes({}); setSelChars({}); setSelProps({})
-    setGenScenes([]); setGenChars([]); setGenProps([])
-  }
-
-  // ② 提炼场景
-  const handleExtractScenes = async () => {
+  // ② 提炼素材（详细版）
+  const handleExtractAssets = async () => {
     if (!script.trim()) { setError('请先生成剧本'); return }
-    setLoadingScenes(true)
+    setLoadingAssets(true); setError('')
     try {
-      const r = await fetch(`${API}/extract-scenes`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: script }),
-      })
-      const d = await r.json()
-      setScenes(d.scenes || [])
-      setSelScenes({})
-      await saveProject({ scenes: d.scenes })
-    } catch { setError('场景提取失败') } finally { setLoadingScenes(false) }
-  }
-
-  // ③ 提炼人物
-  const handleExtractChars = async () => {
-    if (!script.trim()) { setError('请先生成剧本'); return }
-    setLoadingChars(true)
-    try {
-      const r = await fetch(`${API}/extract-characters`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: script }),
-      })
-      const d = await r.json()
-      setCharacters(d.characters || [])
-      setSelChars({})
-      await saveProject({ characters: d.characters })
-    } catch { setError('人物提取失败') } finally { setLoadingChars(false) }
-  }
-
-  // ④ 提炼道具
-  const handleExtractProps = async () => {
-    if (!script.trim()) { setError('请先生成剧本'); return }
-    setLoadingProps(true)
-    try {
-      const r = await fetch(`${API}/extract-props`, {
+      const r = await fetch(`${API}/extract-full-assets`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ script }),
       })
       const d = await r.json()
-      setProps(d.props || [])
-      setSelProps({})
-      await saveProject({ props: d.props })
-    } catch { setError('道具提取失败') } finally { setLoadingProps(false) }
+      setAssetData({ characters: d.characters || [], scenes: d.scenes || [], props: d.props || [] })
+      await saveProject({ characters: d.characters, scenes: d.scenes, props: d.props, status: 'assets_done' })
+    } catch { setError('素材提取失败') } finally { setLoadingAssets(false) }
   }
-
-  // ⑤ 生成提示词（仅对勾选的项）
-  const handleGeneratePrompts = async () => {
-    const hasSel = Object.values(selScenes).some(Boolean) ||
-      Object.values(selChars).some(Boolean) ||
-      Object.values(selProps).some(Boolean)
-    if (!hasSel) { setError('请先勾选要生成提示词的项'); return }
-
-    setLoadingPrompts(true)
-    try {
-      // 准备选中的场景
-      const selScenesList = scenes.filter((_, i) => selScenes[i]).map((s, i) => ({
-        scene_id: i + 1,
-        visual_description: `${s.location} - ${s.time}：${s.summary}`,
-      }))
-
-      const selCharsList = characters.filter((_, i) => selChars[i])
-      const selPropsList = props.filter((_, i) => selProps[i])
-
-      const r = await fetch(`${API}/generate-prompts`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scenes: selScenesList, characters: selCharsList, props: selPropsList }),
-      })
-      const d = await r.json()
-
-      if (d.scenes) setGenScenes(d.scenes)
-      if (d.characters) setGenChars(d.characters)
-      if (d.props) setGenProps(d.props)
-    } catch { setError('提示词生成失败') } finally { setLoadingPrompts(false) }
-  }
-
-  const toggleSel = (setter, state, key) => {
-    setter({ ...state, [key]: !state[key] })
-  }
-
-  const hasAnySelection = Object.values(selScenes).some(Boolean) ||
-    Object.values(selChars).some(Boolean) ||
-    Object.values(selProps).some(Boolean)
 
   return (
     <div style={{ background: S.bg, minHeight: '100vh', color: S.text }}>
       {/* 顶栏 */}
       <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(10,10,15,0.92)', backdropFilter: 'blur(20px)', borderBottom: `1px solid ${S.cardBorder}` }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ maxWidth: 1400, margin: '0 auto', padding: '14px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${S.accent}, ${S.accentLight})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>📖</div>
             <span style={{ fontSize: 16, fontWeight: 600 }}>小说工作站</span>
@@ -248,7 +285,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <main style={{ maxWidth: 1200, margin: '0 auto', padding: '24px', display: 'grid', gridTemplateColumns: '280px 1fr', gap: 24 }}>
+      <main style={{ maxWidth: 1400, margin: '0 auto', padding: '24px', display: 'grid', gridTemplateColumns: '280px 1fr', gap: 24 }}>
 
         {/* 左侧项目栏 */}
         <div style={{ position: 'sticky', top: 80, alignSelf: 'start' }}>
@@ -281,9 +318,9 @@ export default function Dashboard() {
                   </div>
                   <div style={{ marginTop: 6 }}>
                     <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 500,
-                      background: p.script ? 'rgba(34,197,94,0.1)' : 'rgba(124,92,252,0.1)',
-                      color: p.script ? '#22c55e' : S.accent }}>
-                      {p.script ? '✓ 有剧本' : '📝 草稿'}
+                      background: p.status === 'assets_done' ? 'rgba(34,197,94,0.1)' : p.script ? 'rgba(124,92,252,0.1)' : 'rgba(255,255,255,0.04)',
+                      color: p.status === 'assets_done' ? '#22c55e' : p.script ? S.accent : S.textMuted }}>
+                      {p.status === 'assets_done' ? '✓ 素材完整' : p.script ? '✓ 有剧本' : '📝 草稿'}
                     </span>
                   </div>
                 </div>
@@ -297,136 +334,77 @@ export default function Dashboard() {
           {!selected ? (
             <Card style={{ textAlign: 'center', padding: '80px 40px' }}>
               <div style={{ fontSize: 48, marginBottom: 16 }}>📚</div>
-              <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>选择或创建一个项目</div>
-              <div style={{ fontSize: 13, color: S.textMuted }}>在左侧选择项目，或创建新项目开始创作</div>
-            </Card>
+            <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>选择或创建一个项目</div>
+            <div style={{ fontSize: 13, color: S.textMuted }}>在左侧选择项目，或创建新项目开始创作</div>
+          </Card>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-              {/* 小说输入 */}
+            {/* 小说输入 */}
+            <Card>
+              <SectionTitle icon="📖">第一步：粘贴小说文本</SectionTitle>
+              <textarea value={novelText} onChange={e => setNovelText(e.target.value)}
+                placeholder="在这里粘贴你的小说文本..."
+                style={{ width: '100%', height: 120, padding: 12, background: S.inputBg, border: `1.5px solid rgba(255,255,255,0.06)`, borderRadius: 10, color: S.text, fontSize: 13, fontFamily: 'monospace', lineHeight: 1.7, resize: 'none', outline: 'none', boxSizing: 'border-box' }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                <span style={{ fontSize: 12, color: S.textMuted }}>{novelText.length} 字</span>
+                <Btn onClick={handleScript} loading={loadingScript} disabled={!novelText.trim()}>① 生成剧本</Btn>
+              </div>
+            </Card>
+
+            {error && <div style={{ padding: '10px 16px', borderRadius: 10, background: 'rgba(252,92,92,0.08)', color: S.error, fontSize: 13, border: '1px solid rgba(252,92,92,0.2)' }}>⚠ {error}</div>}
+
+            {/* 剧本 */}
+            {script && (
               <Card>
-                <SectionTitle icon="📖">第一步：粘贴小说文本</SectionTitle>
-                <textarea value={novelText} onChange={e => setNovelText(e.target.value)}
-                  placeholder="在这里粘贴你的小说文本..."
-                  style={{ width: '100%', height: 120, padding: 12, background: S.inputBg, border: `1.5px solid rgba(255,255,255,0.06)`, borderRadius: 10, color: S.text, fontSize: 13, fontFamily: 'monospace', lineHeight: 1.7, resize: 'none', outline: 'none', boxSizing: 'border-box' }}
+                <SectionTitle icon="📄">剧本（可编辑）</SectionTitle>
+                <textarea value={script} onChange={e => setScript(e.target.value)}
+                  style={{ width: '100%', minHeight: 200, padding: 12, background: S.inputBg, border: `1.5px solid rgba(255,255,255,0.06)`, borderRadius: 10, color: S.text, fontSize: 13, fontFamily: 'monospace', lineHeight: 1.7, resize: 'vertical', outline: 'none', boxSizing: 'border-box' }}
                 />
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-                  <span style={{ fontSize: 12, color: S.textMuted }}>{novelText.length} 字</span>
-                  <Btn onClick={handleScript} loading={loadingScript} disabled={!novelText.trim()}>① 生成剧本</Btn>
+                <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+                  <Btn onClick={() => saveProject({ script })} secondary>保存剧本</Btn>
+                  <Btn onClick={handleExtractAssets} loading={loadingAssets}>② 提炼素材（详细版）</Btn>
                 </div>
               </Card>
+            )}
 
-              {error && <div style={{ padding: '10px 16px', borderRadius: 10, background: 'rgba(252,92,92,0.08)', color: S.error, fontSize: 13, border: '1px solid rgba(252,92,92,0.2)' }}>⚠ {error}</div>}
+            {/* 素材统计概览 */}
+            {assetData && (
+              <Card>
+                <SectionTitle icon="📊">素材概览</SectionTitle>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                  {[
+                    { label: '角色', count: assetData.characters?.length || 0, icon: '👥', color: S.accent },
+                    { label: '场景', count: assetData.scenes?.length || 0, icon: '🎬', color: S.accent },
+                    { label: '道具', count: assetData.props?.length || 0, icon: '🎁', color: S.accent },
+                  ].map((stat, i) => (
+                    <div key={i} style={{
+                      padding: '16px 24px', borderRadius: 12, background: 'rgba(255,255,255,0.03)',
+                      border: `1px solid ${S.cardBorder}`, textAlign: 'center', minWidth: 100,
+                    }}>
+                      <div style={{ fontSize: 24, marginBottom: 4 }}>{stat.icon}</div>
+                      <div style={{ fontSize: 24, fontWeight: 700, color: stat.color }}>{stat.count}</div>
+                      <div style={{ fontSize: 12, color: S.textMuted }}>{stat.label}</div>
+                    </div>
+                  ))}
+                </div>
+                <p style={{ fontSize: 12, color: S.textMuted, marginTop: 12 }}>
+                  💡 下方三张表格已自动保存，可直接复制文生图描述词用于 AI 生图
+                </p>
+              </Card>
+            )}
 
-              {/* 剧本 */}
-              {script && (
-                <Card>
-                  <SectionTitle icon="📄">剧本（可编辑）</SectionTitle>
-                  <textarea value={script} onChange={e => setScript(e.target.value)}
-                    style={{ width: '100%', minHeight: 200, padding: 12, background: S.inputBg, border: `1.5px solid rgba(255,255,255,0.06)`, borderRadius: 10, color: S.text, fontSize: 13, fontFamily: 'monospace', lineHeight: 1.7, resize: 'vertical', outline: 'none', boxSizing: 'border-box' }}
-                  />
-                  <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-                    <Btn onClick={() => { setScript(script); saveProject({ script }) }} secondary>保存剧本</Btn>
-                  </div>
-                </Card>
-              )}
+            {/* 角色表 */}
+            <CharacterTable characters={assetData?.characters} />
 
-              {/* 提炼按钮组 */}
-              {script && (
-                <Card>
-                  <SectionTitle icon="🔍">第二步：从剧本中提炼内容</SectionTitle>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                    <Btn onClick={handleExtractScenes} loading={loadingScenes}>🎬 提炼场景</Btn>
-                    <Btn onClick={handleExtractChars} loading={loadingChars}>👥 提炼人物</Btn>
-                    <Btn onClick={handleExtractProps} loading={loadingProps}>🎁 提炼道具</Btn>
-                  </div>
-                </Card>
-              )}
+            {/* 场景表 */}
+            <SceneTable scenes={assetData?.scenes} />
 
-              {/* 场景列表 */}
-              {scenes.length > 0 && (
-                <Card>
-                  <SectionTitle icon="🎬">场景列表（勾选要生成提示词的）</SectionTitle>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflowY: 'auto' }}>
-                    {scenes.map((s, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: S.inputBg, borderRadius: 10, padding: 12, border: `1px solid ${selScenes[i] ? S.accent : 'rgba(255,255,255,0.04)'}` }}>
-                        <input type="checkbox" checked={!!selScenes[i]} onChange={() => toggleSel(setSelScenes, selScenes, i)}
-                          style={{ accentColor: S.accent, marginTop: 2, flexShrink: 0, width: 16, height: 16 }} />
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: S.text }}>{i + 1}. {s.location} - {s.time}</div>
-                          <div style={{ fontSize: 12, color: S.textMuted }}>{s.summary}</div>
-                          {s.characters?.length > 0 && <div style={{ fontSize: 11, color: S.accentLight, marginTop: 2 }}>👥 {s.characters.join('、')}</div>}
-                          {genScenes[i] && (
-                            <div style={{ marginTop: 8, background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '8px 12px', fontSize: 11, fontFamily: 'monospace', color: S.accentLight, wordBreak: 'break-all' }}>
-                              🎨 {genScenes[i].jimeng_prompt}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              )}
+            {/* 道具表 */}
+            <PropTable props={assetData?.props} />
 
-              {/* 人物列表 */}
-              {characters.length > 0 && (
-                <Card>
-                  <SectionTitle icon="👥">人物列表（勾选要生成提示词的）</SectionTitle>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflowY: 'auto' }}>
-                    {characters.map((c, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: S.inputBg, borderRadius: 10, padding: 12, border: `1px solid ${selChars[i] ? S.accent : 'rgba(255,255,255,0.04)'}` }}>
-                        <input type="checkbox" checked={!!selChars[i]} onChange={() => toggleSel(setSelChars, selChars, i)}
-                          style={{ accentColor: S.accent, marginTop: 2, flexShrink: 0, width: 16, height: 16 }} />
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: S.text }}>{c.name} {c.role && <span style={{ fontSize: 11, color: S.accentLight }}>({c.role})</span>}</div>
-                          {genChars[i] && (
-                            <div style={{ marginTop: 6, background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '8px 12px', fontSize: 11, fontFamily: 'monospace', color: S.accentLight, wordBreak: 'break-all' }}>
-                              🎨 {genChars[i].visual_prompt}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              )}
-
-              {/* 道具列表 */}
-              {props.length > 0 && (
-                <Card>
-                  <SectionTitle icon="🎁">道具列表（勾选要生成提示词的）</SectionTitle>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflowY: 'auto' }}>
-                    {props.map((p, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: S.inputBg, borderRadius: 10, padding: 12, border: `1px solid ${selProps[i] ? S.accent : 'rgba(255,255,255,0.04)'}` }}>
-                        <input type="checkbox" checked={!!selProps[i]} onChange={() => toggleSel(setSelProps, selProps, i)}
-                          style={{ accentColor: S.accent, marginTop: 2, flexShrink: 0, width: 16, height: 16 }} />
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: S.text }}>{p.name}</div>
-                          {p.description && <div style={{ fontSize: 12, color: S.textMuted }}>{p.description}</div>}
-                          {genProps[i] && (
-                            <div style={{ marginTop: 6, background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '8px 12px', fontSize: 11, fontFamily: 'monospace', color: S.accentLight, wordBreak: 'break-all' }}>
-                              🎨 {genProps[i].visual_prompt}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              )}
-
-              {/* 生成提示词按钮 */}
-              {hasAnySelection && (
-                <Card style={{ textAlign: 'center', padding: '20px 24px' }}>
-                  <SectionTitle icon="✨">第三步：生成提示词</SectionTitle>
-                  <div style={{ fontSize: 13, color: S.textMuted, marginBottom: 16 }}>
-                    已选择：{Object.values(selScenes).filter(Boolean).length} 个场景，{Object.values(selChars).filter(Boolean).length} 个人物，{Object.values(selProps).filter(Boolean).length} 个道具
-                  </div>
-                  <Btn onClick={handleGeneratePrompts} loading={loadingPrompts}>✨ 生成提示词</Btn>
-                </Card>
-              )}
-
-            </div>
+          </div>
           )}
         </div>
       </main>
