@@ -1,60 +1,91 @@
-"""
-小说 → 剧本 → 分镜 工作站后端
-完整版：AI处理 + 项目存储
-"""
-import os
-import json
-import re
-from datetime import datetime
-from contextlib import asynccontextmanager
+    """
 
-from fastapi import FastAPI, HTTPException, Depends
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional, List
-from sqlalchemy.orm import Session
-import httpx
+    小说 → 剧本 → 分镜 工作站后端
 
-from models import engine, Base, Project, SessionLocal, init_db
+    完整版：AI处理 + 项目存储
 
-# ─── Lifespan ──────────────────────────────────────────────
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+    """
+
+    import os
+
+    import json
+
+    import re
+
+    from datetime import datetime
+
+    from contextlib import asynccontextmanager
+
+
+    from fastapi import FastAPI, HTTPException, Depends
+
+    from fastapi.middleware.cors import CORSMiddleware
+
+    from pydantic import BaseModel
+
+    from typing import Optional, List
+
+    from sqlalchemy.orm import Session
+
+    import httpx
+
+
+    from models import engine, Base, Project, SessionLocal, init_db
+
+
+    # ─── Lifespan ──────────────────────────────────────────────
+
+    @asynccontextmanager
+
+    async def lifespan(app: FastAPI):
+
     init_db()  # 启动时创建表
     yield
 
-app = FastAPI(title="📚 小说工作站 API", lifespan=lifespan)
+    app = FastAPI(title="📚 小说工作站 API", lifespan=lifespan)
 
-app.add_middleware(
+
+    app.add_middleware(
+
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-)
-
-# ─── Config ────────────────────────────────────────────────
-MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
-MINIMAX_BASE_URL = "https://api.minimaxi.com/anthropic"
+    )
 
 
-# ─── DB Helpers ────────────────────────────────────────────
-def get_db():
+    # ─── Config ────────────────────────────────────────────────
+
+    MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
+
+    MINIMAX_BASE_URL = "https://api.minimaxi.com/anthropic"
+
+
+
+    # ─── DB Helpers ────────────────────────────────────────────
+
+    def get_db():
+
     db = SessionLocal()
-    try:
+            try:
+
         yield db
     finally:
         db.close()
 
 
-# ─── Pydantic Models ───────────────────────────────────────
-class ProjectCreate(BaseModel):
+    # ─── Pydantic Models ───────────────────────────────────────
+
+    class ProjectCreate(BaseModel):
+
     name: str
     description: Optional[str] = ""
     novel_text: Optional[str] = ""
     settings: Optional[dict] = {}
 
-class ProjectUpdate(BaseModel):
+    class ProjectUpdate(BaseModel):
+
     name: Optional[str] = None
     description: Optional[str] = None
     novel_text: Optional[str] = None
@@ -66,7 +97,8 @@ class ProjectUpdate(BaseModel):
     settings: Optional[dict] = None
     status: Optional[str] = None
 
-class ProjectResponse(BaseModel):
+    class ProjectResponse(BaseModel):
+
     id: int
     name: str
     description: Optional[str]
@@ -84,45 +116,56 @@ class ProjectResponse(BaseModel):
     class Config:
         from_attributes = True
 
-class NovelInput(BaseModel):
+    class NovelInput(BaseModel):
+
     text: str
     title: Optional[str] = "未命名小说"
 
-class SceneExtractResult(BaseModel):
+    class SceneExtractResult(BaseModel):
+
     scenes: list[dict]
     total_chars: int
 
-class CharactersRequest(BaseModel):
+    class CharactersRequest(BaseModel):
+
     characters: list[str]
 
-class PropsRequest(BaseModel):
+    class PropsRequest(BaseModel):
+
     script: str
 
-class PromptRequest(BaseModel):
+    class PromptRequest(BaseModel):
+
     """用户选择的待生成提示词的项目"""
     scenes: Optional[list[dict]] = None   # 选中的场景 [{scene_id, visual_prompt}]
     characters: Optional[list[dict]] = None  # 选中的角色 [{name, visual_prompt}]
     props: Optional[list[dict]] = None   # 选中的道具 [{name, visual_prompt}]
 
-class ExtractAssetsRequest(BaseModel):
+    class ExtractAssetsRequest(BaseModel):
+
     """综合素材提取请求"""
     script: str
     title: Optional[str] = "未命名"
 
-class ScriptGenerateResult(BaseModel):
+    class ScriptGenerateResult(BaseModel):
+
     script: str
     scene_count: int
 
-class StoryboardResult(BaseModel):
+    class StoryboardResult(BaseModel):
+
     storyboards: list[dict]
     total_scenes: int
 
-class FullPipelineRequest(BaseModel):
+    class FullPipelineRequest(BaseModel):
+
     text: str
     title: Optional[str] = "未命名小说"
 
-# ─── AI Helper ─────────────────────────────────────────────
-async def call_minimax(system: str, user: str) -> str:
+    # ─── AI Helper ─────────────────────────────────────────────
+
+    async def call_minimax(system: str, user: str) -> str:
+
     if not MINIMAX_API_KEY:
         raise HTTPException(500, "MINIMAX_API_KEY 未配置")
     
@@ -150,33 +193,47 @@ async def call_minimax(system: str, user: str) -> str:
         raise HTTPException(500, f"AI 返回格式异常：{json.dumps(data.get('content', []), ensure_ascii=False)[:300]}")
 
 
-# ─── API Routes ────────────────────────────────────────────
-
-@app.get("/")
-async def root():
-    return {"message": "📚 小说工作站 API 正常运行", "version": "1.0.0"}
-
-@app.get("/health")
-async def health():
-    return {"status": "ok", "ai_configured": bool(MINIMAX_API_KEY)}
+    # ─── API Routes ────────────────────────────────────────────
 
 
-# ─── 项目管理 CRUD ─────────────────────────────────────────
-@app.get("/api/projects", response_model=List[ProjectResponse])
-async def list_projects(db: Session = Depends(get_db)):
+    @app.get("/")
+
+    async def root():
+
+                return {"message": "📚 小说工作站 API 正常运行", "version": "1.0.0"}
+
+
+    @app.get("/health")
+
+    async def health():
+
+                return {"status": "ok", "ai_configured": bool(MINIMAX_API_KEY)}
+
+
+
+    # ─── 项目管理 CRUD ─────────────────────────────────────────
+
+    @app.get("/api/projects", response_model=List[ProjectResponse])
+
+    async def list_projects(db: Session = Depends(get_db)):
+
     """列出所有项目"""
     projects = db.query(Project).order_by(Project.updated_at.desc()).all()
     return projects
 
-@app.get("/api/projects/{project_id}", response_model=ProjectResponse)
-async def get_project(project_id: int, db: Session = Depends(get_db)):
+    @app.get("/api/projects/{project_id}", response_model=ProjectResponse)
+
+    async def get_project(project_id: int, db: Session = Depends(get_db)):
+
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(404, "项目不存在")
     return project
 
-@app.post("/api/projects", response_model=ProjectResponse)
-async def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
+    @app.post("/api/projects", response_model=ProjectResponse)
+
+    async def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
+
     db_project = Project(
         name=project.name,
         description=project.description or "",
@@ -189,8 +246,10 @@ async def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
     db.refresh(db_project)
     return db_project
 
-@app.put("/api/projects/{project_id}", response_model=ProjectResponse)
-async def update_project(project_id: int, update: ProjectUpdate, db: Session = Depends(get_db)):
+    @app.put("/api/projects/{project_id}", response_model=ProjectResponse)
+
+    async def update_project(project_id: int, update: ProjectUpdate, db: Session = Depends(get_db)):
+
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(404, "项目不存在")
@@ -203,25 +262,35 @@ async def update_project(project_id: int, update: ProjectUpdate, db: Session = D
     db.refresh(project)
     return project
 
-@app.delete("/api/projects/{project_id}")
-async def delete_project(project_id: int, db: Session = Depends(get_db)):
+    @app.delete("/api/projects/{project_id}")
+
+    async def delete_project(project_id: int, db: Session = Depends(get_db)):
+
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(404, "项目不存在")
     db.delete(project)
     db.commit()
-    return {"message": "删除成功"}
+                return {"message": "删除成功"}
 
 
-# ─── 1. 场景提取 ───────────────────────────────────────────
-@app.post("/api/extract-scenes", response_model=SceneExtractResult)
-async def extract_scenes(input: NovelInput):
+
+    # ─── 1. 场景提取 ───────────────────────────────────────────
+
+    @app.post("/api/extract-scenes", response_model=SceneExtractResult)
+
+    async def extract_scenes(input: NovelInput):
+
     system_prompt = """你是一个专业的影视编剧助手。
 
-收到小说文本后：
-1. 提取所有出现的角色名字（按出现顺序列出）
-2. 将小说切割成独立场景（基于：时间变化、地点变化、人物变化）
-3. 每个场景输出 JSON 格式：
+    收到小说文本后：
+
+    1. 提取所有出现的角色名字（按出现顺序列出）
+
+    2. 将小说切割成独立场景（基于：时间变化、地点变化、人物变化）
+
+    3. 每个场景输出 JSON 格式：
+
    - scene_id: 场景编号
    - location: 室内/室外 + 具体地点
    - time: 时间（白天/夜晚/凌晨等）
@@ -229,17 +298,22 @@ async def extract_scenes(input: NovelInput):
    - summary: 30字以内的场景概要
    - key_dialogue: 最能代表这场戏的一句对话（无对话则省略）
 
-最终输出一个完整的 JSON 对象，格式如下：
-{
+    最终输出一个完整的 JSON 对象，格式如下：
+
+    {
+
   "characters": ["角色1", "角色2", ...],
   "scenes": [场景1, 场景2, ...]
-}
+    }
 
-只输出 JSON，不要其他文字。"""
+
+    只输出 JSON，不要其他文字。"""
+
 
     raw = await call_minimax(system_prompt, f"小说标题：{input.title}\n\n{input.text[:8000]}")
     
-    try:
+            try:
+
         match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
         if match:
             data = json.loads(match.group(1))
@@ -254,60 +328,84 @@ async def extract_scenes(input: NovelInput):
     )
 
 
-# ─── 1.5 角色提取（从剧本） ─────────────────────────────────
-@app.post("/api/extract-characters")
-async def extract_characters(input: NovelInput):
+    # ─── 1.5 角色提取（从剧本） ─────────────────────────────────
+
+    @app.post("/api/extract-characters")
+
+    async def extract_characters(input: NovelInput):
+
     """
     从剧本中提取角色列表
     """
     system_prompt = """你是一个专业的影视编剧助手。
 
-分析以下剧本，提取所有出现的角色。
+    分析以下剧本，提取所有出现的角色。
 
-输出 JSON 数组，每个角色包含：
-- name: 角色姓名
-- role: 角色定位（例：男主角、女主角、反派、配角等）
 
-只输出 JSON 数组，不要其他文字。"""
+    输出 JSON 数组，每个角色包含：
+
+    - name: 角色姓名
+
+    - role: 角色定位（例：男主角、女主角、反派、配角等）
+
+
+    只输出 JSON 数组，不要其他文字。"""
+
 
     raw = await call_minimax(system_prompt, f"剧本：\n{input.text[:8000]}")
-    try:
+            try:
+
         match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
         data = json.loads(match.group(1)) if match else json.loads(raw)
     except json.JSONDecodeError as e:
         raise HTTPException(500, f"AI 返回格式错误: {e}\n\n{raw[:300]}")
-    return {"characters": data, "total": len(data)}
+                return {"characters": data, "total": len(data)}
 
 
-# ─── 1.6 道具提取（从剧本） ─────────────────────────────────
-@app.post("/api/extract-props")
-async def extract_props(req: PropsRequest):
+
+    # ─── 1.6 道具提取（从剧本） ─────────────────────────────────
+
+    @app.post("/api/extract-props")
+
+    async def extract_props(req: PropsRequest):
+
     """
     从剧本中提取重要道具/物品
     """
     system_prompt = """你是一个专业的影视美术指导。
 
-分析以下剧本，提取所有重要的道具、物品、场景元素。
+    分析以下剧本，提取所有重要的道具、物品、场景元素。
 
-输出 JSON 数组，每个道具包含：
-- name: 道具名称
-- description: 道具的外观和用途描述
-- scene_where: 出现在哪场戏
 
-只输出 JSON 数组，不要其他文字。"""
+    输出 JSON 数组，每个道具包含：
+
+    - name: 道具名称
+
+    - description: 道具的外观和用途描述
+
+    - scene_where: 出现在哪场戏
+
+
+    只输出 JSON 数组，不要其他文字。"""
+
 
     raw = await call_minimax(system_prompt, f"剧本：\n{req.script[:8000]}")
-    try:
+            try:
+
         match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
         data = json.loads(match.group(1)) if match else json.loads(raw)
     except json.JSONDecodeError as e:
         raise HTTPException(500, f"AI 返回格式错误: {e}\n\n{raw[:300]}")
-    return {"props": data, "total": len(data)}
+                return {"props": data, "total": len(data)}
 
 
-# ─── 1.8 综合素材提取（详细版） ───────────────────────────
-@app.post("/api/extract-full-assets")
-async def extract_full_assets(req: ExtractAssetsRequest):
+
+    # ─── 1.8 综合素材提取（详细版） ───────────────────────────
+
+    @app.post("/api/extract-full-assets")
+
+    async def extract_full_assets(req: ExtractAssetsRequest):
+
     """
     详细提取剧本中的角色、场景、道具三大类素材，
     输出完整结构化表格，参照剧本素材库提取标准。
@@ -315,108 +413,102 @@ async def extract_full_assets(req: ExtractAssetsRequest):
     # Step 1: 提取角色
     chars_prompt = f"""你是一个专业的影视美术设计师和人物设定专家。
 
-分析以下剧本，提取所有出现的角色（含路人、配角），输出JSON数组。
+    分析以下剧本，提取所有出现的角色（含路人、配角），输出JSON数组。
 
-每个角色必须包含：
-- name: 角色姓名
-- role: 角色定位（主角/配角/反派/路人等）
-- gender: 性别（男/女/未知）
-- age: 年龄描述（如"25-30岁"）
-- height: 身高描述（如"175cm，挺拔修长"）
-- body_type: 体型（纤瘦/匀称/微胖/健壮/魁梧等）
-- hairstyle: 发型具体描述
-- hair_color: 发色+光泽感
-- face_shape: 脸型+细节
-- eyes: 眼形+瞳色+细节
-- skin: 肤色+质感
-- outfit: 款式+颜色+材质+细节
-- accessories: 所有饰品（无则填"无"）
-- personality: 性格+剧本细节佐证
-- appearances: 出场场次（如"第1、3、5场"）
 
-只输出JSON数组，不要其他文字。"""
+    每个角色必须包含：
 
-    raw_chars = await call_minimax(chars_prompt, f"剧本：\n{req.script[:6000]}")
-    try:
-        match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw_chars, re.DOTALL)
-        characters = json.loads(match.group(1)) if match else json.loads(raw_chars)
-    except:
-        characters = []
+    - name: 角色姓名
 
-    # Step 2: 提取场景
-    scenes_prompt = """你是一个专业的影视分镜师和场景美术设计师。
+    - role: 角色定位（主角/配角/反派/路人等）
 
-分析以下剧本，逐字逐句通读，提取所有出现的场景，输出JSON数组。同一地点不同空间单独提取（如"客厅"和"卧室"分开）。
+    - gender: 性别（男/女/未知）
 
-每个场景必须包含以下16个字段：
-1. scene_id: 场景编号
-2. scene_name: 精确场景名称（如"客厅（主角家）""咖啡馆（街角）"）
-3. appearances: 出场集数
-4. time: 精确时刻（如"清晨6点""深夜11点""阴天午后"）
-5. weather: 天气（室外明确天气；室内标"室内无天气影响"，有窗补充窗外天气）
-6. light_source: 光源类型+质感+氛围（如"暖黄吊灯，光线柔和有晕，营造温馨感"）
-7. space_type: 大类+细分（如"室内住宅-主卧""室外街道-老街区"）
-8. space_scale: 面积估算（如"约15㎡""开阔视野无遮挡"）
-9. height: 层高或空间高度（如"层高2.8米"）
-10. main_elements: 核心陈设物+细节描述
-11. foreground: 前景元素+具体描述
-12. mood: 情绪词+场景细节支撑（如"清冷静谧，月光漫布"）
-13. style: 整体风格+细节（简约现代/复古怀旧/中式古典/ins风等）
-14. shot_type: 景别（全景/中景/近景/特写/远景）
-15. camera_angle: 视角设定（平视/俯视/仰视/侧视+补充说明）
-16. visual_prompt_no_chars: 文生图描述词，**严禁出现任何人物**，仅描述空间光线氛围陈设，中文
+    - age: 年龄描述（如"25-30岁"）
 
-文生图描述词示例（无人物）：
-主角家卧室，15㎡，层高2.8米，清晨7点，自然光从东侧窗户射入，柔和明亮，简约现代风格，1.8米双人床为主体，前景为窗台绿萝，氛围温馨，全景平视视角，墙面白色，家具浅灰色，床单浅蓝，高清写实风格，无任何人物元素
+    - height: 身高描述（如"175cm，挺拔修长"）
 
-只输出JSON数组，不要其他文字。"""
+    - body_type: 体型（纤瘦/匀称/微胖/健壮/魁梧等）
 
-    raw_scenes = await call_minimax(scenes_prompt, f"剧本：\n{req.script[:6000]}")
-    try:
-        match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw_scenes, re.DOTALL)
-        scenes = json.loads(match.group(1)) if match else json.loads(raw_scenes)
-    except:
-        scenes = []
+    - hairstyle: 发型具体描述
 
-    # Step 3: 提取道具
-    props_prompt = """你是一个专业的影视美术指导。
+    - hair_color: 发色+光泽感
 
-分析以下剧本，提取所有出现的道具（哪怕是背景中的），输出JSON数组。
+    - face_shape: 脸型+细节
 
-每个道具必须包含以下5个字段：
-1. name: 道具精确名称（如"黑色皮质笔记本""陶瓷水杯""旧雨伞""苹果13手机"）
-2. appearances: 出场集数
-3. changes: 道具变化（如"第1集为新品，第5集封面磨损破旧"，无则填"无变化"）
-4. visual_prompt: 外观+颜色+材质+尺寸+细节+状态，精准具体
-5. notes: 备注（重复出场次数/特殊情况）
+    - eyes: 眼形+瞳色+细节
 
-文生图描述词示例：
-黑色皮质笔记本，A5尺寸，封面光滑，银色金属搭扣，内页米黄色，边缘无磨损，全新状态，高清写实，光线柔和
+    - skin: 肤色+质感
 
-只输出JSON数组，不要其他文字。"""
+    - outfit: 款式+颜色+材质+细节
 
-    raw_props = await call_minimax(props_prompt, f"剧本：\n{req.script[:6000]}")
-    try:
-        match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw_props, re.DOTALL)
-        props = json.loads(match.group(1)) if match else json.loads(raw_props)
-    except:
-        props = []
+    - accessories: 所有饰品（无则填"无"）
 
-    return {
-        "characters": characters,
-        "scenes": scenes,
-        "props": props,
-        "summary": {
-            "total_characters": len(characters),
-            "total_scenes": len(scenes),
-            "total_props": len(props),
+    - personality: 性格+剧本细节佐证
+
+    - appearances: 出场场次（如"第1、3、5场"）
+
+
+    只输出JSON数组，不要其他文字。"""
+
+
+        # 三个AI调用并发执行，速度提升3倍
+        import asyncio as _asyncio
+
+                    async def _get_chars():
+
+            return await call_minimax(chars_prompt, f"剧本：\n{req.script[:6000]}")
+
+                    async def _get_scenes():
+
+            return await call_minimax(scenes_prompt, f"剧本：\n{req.script[:6000]}")
+
+                    async def _get_props():
+
+            return await call_minimax(props_prompt, f"剧本：\n{req.script[:6000]}")
+
+        raw_chars, raw_scenes, raw_props = await _asyncio.gather(
+            _get_chars(), _get_scenes(), _get_props()
+        )
+
+        try:
+            m = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw_chars, re.DOTALL)
+            characters = json.loads(m.group(1)) if m else json.loads(raw_chars)
+        except:
+            characters = []
+
+        try:
+            m = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw_scenes, re.DOTALL)
+            scenes = json.loads(m.group(1)) if m else json.loads(raw_scenes)
+        except:
+            scenes = []
+
+        try:
+            m = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw_props, re.DOTALL)
+            props = json.loads(m.group(1)) if m else json.loads(raw_props)
+        except:
+            props = []
+
+        return {
+            "characters": characters,
+            "scenes": scenes,
+            "props": props,
+            "summary": {
+                "total_characters": len(characters),
+                "total_scenes": len(scenes),
+                "total_props": len(props),
+            }
         }
-    }
 
 
-# ─── 1.7 统一生成提示词 ────────────────────────────────────
-@app.post("/api/generate-prompts")
-async def generate_prompts(req: PromptRequest):
+
+
+    # ─── 1.7 统一生成提示词 ────────────────────────────────────
+
+    @app.post("/api/generate-prompts")
+
+    async def generate_prompts(req: PromptRequest):
+
     """
     为用户选中的场景/角色/道具生成视觉提示词
     """
@@ -426,17 +518,25 @@ async def generate_prompts(req: PromptRequest):
     if req.scenes:
         system_prompt = """你是一个专业的影视分镜师和AI绘图提示词工程师。
 
-收到场景列表后，为每个场景生成视觉提示词。
+    收到场景列表后，为每个场景生成视觉提示词。
 
-每个场景输出 JSON：
-- scene_id: 场景编号
-- visual_description: 画面描述
-- camera_angle: 摄影角度（鸟瞰/仰角/过肩/正面中景等）
-- mood: 氛围关键词（冷色调/暖色调/暗光等）
-- jimeng_prompt: 即梦(Jimeng)风格英文提示词，格式：
+
+    每个场景输出 JSON：
+
+    - scene_id: 场景编号
+
+    - visual_description: 画面描述
+
+    - camera_angle: 摄影角度（鸟瞰/仰角/过肩/正面中景等）
+
+    - mood: 氛围关键词（冷色调/暖色调/暗光等）
+
+    - jimeng_prompt: 即梦(Jimeng)风格英文提示词，格式：
+
   客观描述 + 整体风格 + 光影细节 + 细节补充 + 电影级画面质感，高清摄影风格，专业摄影作品，8K超高清，无噪点，杰作
 
-只输出 JSON 数组。"""
+    只输出 JSON 数组。"""
+
         raw = await call_minimax(system_prompt, f"场景列表：\n{json.dumps(req.scenes, ensure_ascii=False, indent=2)}")
         try:
             match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
@@ -448,16 +548,24 @@ async def generate_prompts(req: PromptRequest):
     if req.characters:
         system_prompt = """你是一个专业的影视美术设计师和人物设定专家。
 
-收到角色列表后，为每个角色生成视觉提示词。
+    收到角色列表后，为每个角色生成视觉提示词。
 
-每个角色输出 JSON：
-- name: 角色姓名
-- role: 角色定位
-- age_appearance: 外貌年龄描述
-- personality: 性格特点
-- visual_prompt: AI绘图英文提示词（格式：人物类型 + 外貌 + 服装 + 光影 + 电影级质感，专业摄影作品，8K超高清，无噪点，杰作）
 
-只输出 JSON 数组。"""
+    每个角色输出 JSON：
+
+    - name: 角色姓名
+
+    - role: 角色定位
+
+    - age_appearance: 外貌年龄描述
+
+    - personality: 性格特点
+
+    - visual_prompt: AI绘图英文提示词（格式：人物类型 + 外貌 + 服装 + 光影 + 电影级质感，专业摄影作品，8K超高清，无噪点，杰作）
+
+
+    只输出 JSON 数组。"""
+
         raw = await call_minimax(system_prompt, f"角色列表：\n{json.dumps(req.characters, ensure_ascii=False, indent=2)}")
         try:
             match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
@@ -469,15 +577,22 @@ async def generate_prompts(req: PromptRequest):
     if req.props:
         system_prompt = """你是一个专业的影视美术指导。
 
-收到道具列表后，为每个道具生成视觉提示词。
+    收到道具列表后，为每个道具生成视觉提示词。
 
-每个道具输出 JSON：
-- name: 道具名称
-- description: 道具外观描述
-- scene_where: 出现场景
-- visual_prompt: AI绘图英文提示词（格式：道具类型 + 外观 + 材质 + 光影 + 电影级质感，专业摄影作品，8K超高清，无噪点，杰作）
 
-只输出 JSON 数组。"""
+    每个道具输出 JSON：
+
+    - name: 道具名称
+
+    - description: 道具外观描述
+
+    - scene_where: 出现场景
+
+    - visual_prompt: AI绘图英文提示词（格式：道具类型 + 外观 + 材质 + 光影 + 电影级质感，专业摄影作品，8K超高清，无噪点，杰作）
+
+
+    只输出 JSON 数组。"""
+
         raw = await call_minimax(system_prompt, f"道具列表：\n{json.dumps(req.props, ensure_ascii=False, indent=2)}")
         try:
             match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
@@ -488,25 +603,38 @@ async def generate_prompts(req: PromptRequest):
     return results
 
 
-# ─── 2. 剧本生成 ───────────────────────────────────────────
-@app.post("/api/generate-script", response_model=ScriptGenerateResult)
-async def generate_script(input: NovelInput):
+    # ─── 2. 剧本生成 ───────────────────────────────────────────
+
+    @app.post("/api/generate-script", response_model=ScriptGenerateResult)
+
+    async def generate_script(input: NovelInput):
+
     system_prompt = """你是一个专业电影剧本作家。
 
-收到小说文本后，将其改编为标准中文剧本格式。
+    收到小说文本后，将其改编为标准中文剧本格式。
 
-剧本格式规范：
-- 大写场景标题：内景/外景 地点 - 时间（例：内景 咖啡厅 - 白天）
-- 场景描述：用1-3句话描写镜头画面（文学但不冗长）
-- 角色名：大写后跟冒号（例：李明：）
-- 对话：不加引号
-- 括号：表示动作或语气（如（温柔地））
 
-全部使用中文输出，包括场景标题、描述、角色名、对话。
+    剧本格式规范：
 
-输出完整剧本，保持叙事张力，适度删减冗余描写。
+    - 大写场景标题：内景/外景 地点 - 时间（例：内景 咖啡厅 - 白天）
 
-只输出剧本正文，不要额外说明。"""
+    - 场景描述：用1-3句话描写镜头画面（文学但不冗长）
+
+    - 角色名：大写后跟冒号（例：李明：）
+
+    - 对话：不加引号
+
+    - 括号：表示动作或语气（如（温柔地））
+
+
+    全部使用中文输出，包括场景标题、描述、角色名、对话。
+
+
+    输出完整剧本，保持叙事张力，适度删减冗余描写。
+
+
+    只输出剧本正文，不要额外说明。"""
+
 
     script = await call_minimax(system_prompt, input.text[:8000])
     scene_count = len(re.findall(r"^(INT\.|EXT\.)", script, re.MULTILINE))
@@ -517,20 +645,30 @@ async def generate_script(input: NovelInput):
     )
 
 
-# ─── 3. 分镜生成 ───────────────────────────────────────────
-@app.post("/api/generate-storyboard", response_model=StoryboardResult)
-async def generate_storyboard(scenes: list[dict]):
+    # ─── 3. 分镜生成 ───────────────────────────────────────────
+
+    @app.post("/api/generate-storyboard", response_model=StoryboardResult)
+
+    async def generate_storyboard(scenes: list[dict]):
+
     system_prompt = """你是一个专业的影视分镜师和AI绘图提示词工程师。
 
-收到场景列表后，为每个场景生成一个分镜卡片，包含：
-- 画面描述：详细的镜头画面描写（适合转译为AI绘图提示词）
-- 摄影角度：如鸟瞰、仰角、过肩、正面中景等
-- 氛围关键词：冷色调/暖色调/暗光等
-- jimeng_prompt：即梦(Jimeng)风格的英文提示词，格式：
+    收到场景列表后，为每个场景生成一个分镜卡片，包含：
+
+    - 画面描述：详细的镜头画面描写（适合转译为AI绘图提示词）
+
+    - 摄影角度：如鸟瞰、仰角、过肩、正面中景等
+
+    - 氛围关键词：冷色调/暖色调/暗光等
+
+    - jimeng_prompt：即梦(Jimeng)风格的英文提示词，格式：
+
   客观描述 + 整体风格 + 光影细节 + 细节补充 + 电影级画面质感，高清摄影风格，专业摄影作品，8K超高清，无噪点，杰作
 
-输出 JSON 数组格式：
-[
+    输出 JSON 数组格式：
+
+    [
+
   {
     "scene_id": 1,
     "visual_description": "...",
@@ -539,14 +677,17 @@ async def generate_storyboard(scenes: list[dict]):
     "jimeng_prompt": "..."
   },
   ...
-]
+    ]
 
-只输出 JSON。"""
+
+    只输出 JSON。"""
+
 
     scenes_text = json.dumps(scenes[:20], ensure_ascii=False, indent=2)
     raw = await call_minimax(system_prompt, f"场景列表：\n{scenes_text}")
     
-    try:
+            try:
+
         match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
         if match:
             data = json.loads(match.group(1))
@@ -561,14 +702,18 @@ async def generate_storyboard(scenes: list[dict]):
     )
 
 
-# ─── 4. 完整流程 ───────────────────────────────────────────
-@app.post("/api/full-pipeline")
-async def full_pipeline(req: FullPipelineRequest):
+    # ─── 4. 完整流程 ───────────────────────────────────────────
+
+    @app.post("/api/full-pipeline")
+
+    async def full_pipeline(req: FullPipelineRequest):
+
     scenes_result = await extract_scenes(NovelInput(text=req.text, title=req.title))
     script_result = await generate_script(NovelInput(text=req.text, title=req.title))
     storyboard_result = await generate_storyboard(scenes_result.scenes)
     
-    return {
+                return {
+
         "title": req.title,
         "total_chars": scenes_result.total_chars,
         "characters": scenes_result.characters,
@@ -579,6 +724,7 @@ async def full_pipeline(req: FullPipelineRequest):
     }
 
 
-if __name__ == "__main__":
+    if __name__ == "__main__":
+
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)

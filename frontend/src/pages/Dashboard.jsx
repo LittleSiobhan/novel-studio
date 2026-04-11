@@ -260,7 +260,8 @@ export default function Dashboard() {
     setLoadingAssets(true); setError('')
     try {
       const r = await fetch(`${API}/extract-full-assets`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ script }),
       })
       const d = await r.json()
