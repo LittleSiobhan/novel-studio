@@ -82,69 +82,66 @@ function CharacterTable({ characters }) {
 }
 
 // ── 场景详细表格 ──────────────────────────────────────────
-function SceneCard({ scene, index }) {
-  const [open, setOpen] = useState(false)
-  const fields = [
-    ['场景编号', scene.scene_id || index + 1],
-    ['场景名称', scene.scene_name || '-'],
-    ['出场场次', scene.appearances || '-'],
-    ['时间', scene.time || '-'],
-    ['天气', scene.weather || '-'],
-    ['光源', scene.light_source || '-'],
-    ['空间类型', scene.space_type || '-'],
-    ['面积', scene.space_scale || '-'],
-    ['高度', scene.height || '-'],
-    ['主体陈设', scene.main_elements || '-'],
-    ['前景', scene.foreground || '-'],
-    ['氛围', scene.mood || '-'],
-    ['风格', scene.style || '-'],
-    ['景别', scene.shot_type || '-'],
-    ['视角', scene.camera_angle || '-'],
-    ['文生图描述词', scene.visual_prompt_no_chars || '-'],
-  ]
-  return (
-    <div style={{
-      border: `1px solid ${S.cardBorder}`,
-      borderRadius: 12,
-      overflow: 'hidden',
-      marginBottom: 8,
-      background: 'rgba(255,255,255,0.02)',
-    }}>
-      {/* Header row */}
-      <div onClick={() => setOpen(!open)} style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
-        cursor: 'pointer', userSelect: 'none',
-      }}>
-        <span style={{ color: S.accent, fontWeight: 700, fontSize: 13, minWidth: 24 }}>#{scene.scene_id || index + 1}</span>
-        <span style={{ color: S.text, fontWeight: 600, fontSize: 13, flex: 1 }}>{scene.scene_name || '未命名场景'}</span>
-        <span style={{ color: S.textMuted, fontSize: 12 }}>{scene.time || '-'}</span>
-        <span style={{ color: S.textMuted, fontSize: 12 }}>{scene.space_type || '-'}</span>
-        <span style={{ fontSize: 11, color: S.accentLight, background: S.accentGlow, padding: '2px 8px', borderRadius: 6 }}>{open ? '收起' : '展开'}</span>
-      </div>
-      {/* Expanded detail grid */}
-      {open && (
-        <div style={{ borderTop: `1px solid ${S.cardBorder}`, padding: '16px', background: 'rgba(0,0,0,0.15)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 10 }}>
-            {fields.map(([label, value]) => (
-              <div key={label} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '10px 12px' }}>
-                <div style={{ fontSize: 10, color: S.textMuted, fontWeight: 600, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
-                <div style={{ fontSize: 12.5, color: label === '文生图描述词' ? S.accentLight : S.text, fontFamily: label === '文生图描述词' ? 'monospace' : 'inherit', lineHeight: 1.6, wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{String(value)}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
 function SceneTable({ scenes }) {
   if (!scenes?.length) return null
   return (
     <Card style={{ marginTop: 16 }}>
       <SectionTitle icon="🎬">场景汇总表（{scenes.length}）</SectionTitle>
-      {scenes.map((s, i) => <SceneCard key={i} scene={s} index={i} />)}
-      <p style={{ fontSize: 11, color: S.textMuted, marginTop: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {scenes.map((s, i) => {
+          // 合成一段完整的文生图描述
+          const parts = [
+            s.scene_name ? `${s.scene_name}，` : '',
+            s.space_scale ? `面积${s.space_scale}，` : '',
+            s.height ? `层高${s.height}，` : '',
+            s.time ? `${s.time}，` : '',
+            s.weather && s.weather !== '室内无天气影响' ? `${s.weather}，` : '',
+            s.light_source ? `光源为${s.light_source}，` : '',
+            s.style ? `整体风格为${s.style}，` : '',
+            s.main_elements ? `主体陈设为${s.main_elements}，` : '',
+            s.foreground ? `前景为${s.foreground}，` : '',
+            s.mood ? `氛围${s.mood}，` : '',
+            s.space_type ? `${s.space_type}，` : '',
+            s.shot_type ? `建议${s.shot_type}，` : '',
+            s.camera_angle ? `拍摄${s.camera_angle}。` : '',
+          ].filter(Boolean)
+
+          const combined = parts.join('')
+
+          return (
+            <div key={i} style={{
+              border: `1px solid ${S.cardBorder}`,
+              borderRadius: 12,
+              padding: '14px 18px',
+              background: 'rgba(255,255,255,0.02)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
+                <span style={{ color: S.accent, fontWeight: 700, fontSize: 13, minWidth: 20 }}>#{s.scene_id || i + 1}</span>
+                <span style={{ color: S.text, fontWeight: 600, fontSize: 13 }}>{s.scene_name || '未命名场景'}</span>
+                <span style={{ color: S.textMuted, fontSize: 11 }}>{s.appearances || '-'}</span>
+                <span style={{ color: S.textMuted, fontSize: 11 }}>{s.time || '-'}</span>
+                <span style={{ color: S.textMuted, fontSize: 11 }}>{s.space_type || '-'}</span>
+              </div>
+              <p style={{
+                fontSize: 12.5,
+                color: S.accentLight,
+                fontFamily: 'monospace',
+                lineHeight: 1.8,
+                wordBreak: 'break-all',
+                whiteSpace: 'pre-wrap',
+                margin: 0,
+                padding: '10px 12px',
+                background: 'rgba(124,92,252,0.06)',
+                borderRadius: 8,
+                border: '1px solid rgba(124,92,252,0.12)',
+              }}>
+                {combined || s.visual_prompt_no_chars || '（无描述词）'}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+      <p style={{ fontSize: 11, color: S.textMuted, marginTop: 10 }}>
         共 {scenes.length} 个场景，场景描述词已去除所有人物元素
       </p>
     </Card>
