@@ -65,7 +65,7 @@ function CharacterTable({ characters }) {
                   c.outfit || '-',
                   c.accessories || '无',
                   c.personality || '-',
-                  <span style={{ maxWidth: 200, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.visual_prompt}>{c.visual_prompt || '-'}</span>,
+                  <span style={{ maxWidth: 280, display: 'block', whiteSpace: 'normal', lineHeight: 1.5, fontSize: 11 }}>{c.visual_prompt || '-'}</span>,
                 ].map((val, j) => (
                   <td key={j} style={{ padding: '10px 6px', color: S.text, verticalAlign: 'top', lineHeight: 1.5 }}>{val}</td>
                 ))}
@@ -82,48 +82,68 @@ function CharacterTable({ characters }) {
 }
 
 // ── 场景详细表格 ──────────────────────────────────────────
+function SceneCard({ scene, index }) {
+  const [open, setOpen] = useState(false)
+  const fields = [
+    ['场景编号', scene.scene_id || index + 1],
+    ['场景名称', scene.scene_name || '-'],
+    ['出场场次', scene.appearances || '-'],
+    ['时间', scene.time || '-'],
+    ['天气', scene.weather || '-'],
+    ['光源', scene.light_source || '-'],
+    ['空间类型', scene.space_type || '-'],
+    ['面积', scene.space_scale || '-'],
+    ['高度', scene.height || '-'],
+    ['主体陈设', scene.main_elements || '-'],
+    ['前景', scene.foreground || '-'],
+    ['氛围', scene.mood || '-'],
+    ['风格', scene.style || '-'],
+    ['景别', scene.shot_type || '-'],
+    ['视角', scene.camera_angle || '-'],
+    ['文生图描述词', scene.visual_prompt_no_chars || '-'],
+  ]
+  return (
+    <div style={{
+      border: `1px solid ${S.cardBorder}`,
+      borderRadius: 12,
+      overflow: 'hidden',
+      marginBottom: 8,
+      background: 'rgba(255,255,255,0.02)',
+    }}>
+      {/* Header row */}
+      <div onClick={() => setOpen(!open)} style={{
+        display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+        cursor: 'pointer', userSelect: 'none',
+      }}>
+        <span style={{ color: S.accent, fontWeight: 700, fontSize: 13, minWidth: 24 }}>#{scene.scene_id || index + 1}</span>
+        <span style={{ color: S.text, fontWeight: 600, fontSize: 13, flex: 1 }}>{scene.scene_name || '未命名场景'}</span>
+        <span style={{ color: S.textMuted, fontSize: 12 }}>{scene.time || '-'}</span>
+        <span style={{ color: S.textMuted, fontSize: 12 }}>{scene.space_type || '-'}</span>
+        <span style={{ fontSize: 11, color: S.accentLight, background: S.accentGlow, padding: '2px 8px', borderRadius: 6 }}>{open ? '收起' : '展开'}</span>
+      </div>
+      {/* Expanded detail grid */}
+      {open && (
+        <div style={{ borderTop: `1px solid ${S.cardBorder}`, padding: '16px', background: 'rgba(0,0,0,0.15)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 10 }}>
+            {fields.map(([label, value]) => (
+              <div key={label} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '10px 12px' }}>
+                <div style={{ fontSize: 10, color: S.textMuted, fontWeight: 600, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+                <div style={{ fontSize: 12.5, color: label === '文生图描述词' ? S.accentLight : S.text, fontFamily: label === '文生图描述词' ? 'monospace' : 'inherit', lineHeight: 1.6, wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{String(value)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SceneTable({ scenes }) {
   if (!scenes?.length) return null
   return (
     <Card style={{ marginTop: 16 }}>
       <SectionTitle icon="🎬">场景汇总表（{scenes.length}）</SectionTitle>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${S.cardBorder}` }}>
-              {['编号','场景名称','场次','时间','天气','光源','空间类型','面积','高度','主体陈设','前景','氛围','风格','景别','视角','文生图描述词（无人物）'].map(h => (
-                <th key={h} style={{ padding: '8px 6px', textAlign: 'left', color: S.textMuted, fontWeight: 500, whiteSpace: 'nowrap' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {scenes.map((s, i) => (
-              <tr key={i} style={{ borderBottom: `1px solid rgba(255,255,255,0.03)` }}>
-                {[
-                  <span style={{ color: S.accent }}>{s.scene_id || i + 1}</span>,
-                  s.scene_name || '-',
-                  s.appearances || '-',
-                  s.time || '-',
-                  s.weather || '-',
-                  <span style={{ maxWidth: 120, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.light_source || '-'}</span>,
-                  s.space_type || '-',
-                  s.space_scale || '-',
-                  s.height || '-',
-                  <span style={{ maxWidth: 100, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.main_elements || '-'}</span>,
-                  s.foreground || '-',
-                  s.mood || '-',
-                  s.style || '-',
-                  s.shot_type || '-',
-                  s.camera_angle || '-',
-                  <span style={{ maxWidth: 200, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: S.accentLight, fontFamily: 'monospace', fontSize: 10 }} title={s.visual_prompt_no_chars}>{s.visual_prompt_no_chars || '-'}</span>,
-                ].map((val, j) => (
-                  <td key={j} style={{ padding: '10px 6px', color: S.text, verticalAlign: 'top', lineHeight: 1.5 }}>{val}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {scenes.map((s, i) => <SceneCard key={i} scene={s} index={i} />)}
       <p style={{ fontSize: 11, color: S.textMuted, marginTop: 8 }}>
         共 {scenes.length} 个场景，场景描述词已去除所有人物元素
       </p>
