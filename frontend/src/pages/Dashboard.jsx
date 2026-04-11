@@ -33,48 +33,61 @@ function Btn({ children, onClick, loading, disabled, secondary }) {
 
 // ── 角色详细表格 ──────────────────────────────────────────
 function CharacterTable({ characters }) {
-  const [expanded, setExpanded] = useState({})
   if (!characters?.length) return null
   return (
     <Card style={{ marginTop: 16 }}>
       <SectionTitle icon="👥">角色汇总表（{characters.length}）</SectionTitle>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${S.cardBorder}` }}>
-              {['角色名','定位','性别','年龄','身高','体型','发型','发色','脸型','眼睛','肤色','服装','饰品','性格','文生图描述词'].map(h => (
-                <th key={h} style={{ padding: '8px 6px', textAlign: 'left', color: S.textMuted, fontWeight: 500, whiteSpace: 'nowrap' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {characters.map((c, i) => (
-              <tr key={i} style={{ borderBottom: `1px solid rgba(255,255,255,0.03)` }}>
-                {[
-                  <span style={{ color: S.accentLight, fontWeight: 600 }}>{c.name}</span>,
-                  c.role || '-',
-                  c.gender || '-',
-                  c.age || '-',
-                  c.height || '-',
-                  c.body_type || '-',
-                  c.hairstyle || '-',
-                  c.hair_color || '-',
-                  c.face_shape || '-',
-                  c.eyes || '-',
-                  c.skin || '-',
-                  c.outfit || '-',
-                  c.accessories || '无',
-                  c.personality || '-',
-                  <span style={{ maxWidth: 280, display: 'block', whiteSpace: 'normal', lineHeight: 1.5, fontSize: 11 }}>{c.visual_prompt || '-'}</span>,
-                ].map((val, j) => (
-                  <td key={j} style={{ padding: '10px 6px', color: S.text, verticalAlign: 'top', lineHeight: 1.5 }}>{val}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {characters.map((c, i) => {
+          const parts = [
+            c.age && c.age !== '不详' ? `${c.age}，` : '',
+            c.height && c.height !== '不详' ? `${c.height}，` : '',
+            c.body_type && c.body_type !== '不详' ? `${c.body_type}体型，` : '',
+            c.gender && c.gender !== '未知' ? `${c.gender}性，` : '',
+            c.hairstyle && c.hairstyle !== '不详' ? `${c.hairstyle}，` : '',
+            c.hair_color && c.hair_color !== '不详' ? `${c.hair_color}，` : '',
+            c.face_shape && c.face_shape !== '不详' ? `${c.face_shape}，` : '',
+            c.eyes && c.eyes !== '不详' ? `${c.eyes}，` : '',
+            c.skin && c.skin !== '不详' ? `${c.skin}，` : '',
+            c.outfit && c.outfit !== '不详' ? `身穿${c.outfit}，` : '',
+            c.accessories && c.accessories !== '无' ? `佩戴${c.accessories}，` : '',
+            c.personality ? `性格${c.personality}，` : '',
+          ].filter(Boolean)
+
+          const combined = parts.join('')
+
+          return (
+            <div key={i} style={{
+              border: `1px solid ${S.cardBorder}`,
+              borderRadius: 12,
+              padding: '14px 18px',
+              background: 'rgba(255,255,255,0.02)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <span style={{ color: S.accentLight, fontWeight: 700, fontSize: 14 }}>{c.name}</span>
+                <span style={{ color: S.textMuted, fontSize: 11 }}>{c.role || '未定位'}</span>
+                <span style={{ color: S.textMuted, fontSize: 11 }}>第{c.appearances || '?'}场</span>
+              </div>
+              <p style={{
+                fontSize: 12.5,
+                color: S.accentLight,
+                fontFamily: 'monospace',
+                lineHeight: 1.8,
+                wordBreak: 'break-all',
+                whiteSpace: 'pre-wrap',
+                margin: 0,
+                padding: '10px 12px',
+                background: 'rgba(124,92,252,0.06)',
+                borderRadius: 8,
+                border: '1px solid rgba(124,92,252,0.12)',
+              }}>
+                {combined || c.visual_prompt || '（无描述词）'}
+              </p>
+            </div>
+          )
+        })}
       </div>
-      <p style={{ fontSize: 11, color: S.textMuted, marginTop: 8 }}>
+      <p style={{ fontSize: 11, color: S.textMuted, marginTop: 10 }}>
         共 {characters.length} 个角色（含配角/路人）
       </p>
     </Card>
@@ -154,33 +167,50 @@ function PropTable({ props }) {
   return (
     <Card style={{ marginTop: 16 }}>
       <SectionTitle icon="🎁">道具汇总表（{props.length}）</SectionTitle>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${S.cardBorder}` }}>
-              {['道具名称','出场','变化','文生图描述词','备注'].map(h => (
-                <th key={h} style={{ padding: '8px 6px', textAlign: 'left', color: S.textMuted, fontWeight: 500, whiteSpace: 'nowrap' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {props.map((p, i) => (
-              <tr key={i} style={{ borderBottom: `1px solid rgba(255,255,255,0.03)` }}>
-                {[
-                  <span style={{ color: S.accentLight, fontWeight: 600 }}>{p.name}</span>,
-                  p.appearances || '-',
-                  p.changes || '无变化',
-                  <span style={{ maxWidth: 300, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: 10, color: S.accentLight }} title={p.visual_prompt}>{p.visual_prompt || '-'}</span>,
-                  p.notes || '-',
-                ].map((val, j) => (
-                  <td key={j} style={{ padding: '10px 6px', color: S.text, verticalAlign: 'top', lineHeight: 1.5 }}>{val}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {props.map((p, i) => {
+          const parts = [
+            p.visual_prompt ? `${p.visual_prompt}，` : '',
+            p.changes && p.changes !== '无变化' ? `变化：${p.changes}，` : '',
+            p.notes ? `备注：${p.notes}` : '',
+          ].filter(Boolean)
+
+          const combined = parts.join('')
+
+          return (
+            <div key={i} style={{
+              border: `1px solid ${S.cardBorder}`,
+              borderRadius: 12,
+              padding: '14px 18px',
+              background: 'rgba(255,255,255,0.02)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <span style={{ color: S.accentLight, fontWeight: 700, fontSize: 14 }}>{p.name}</span>
+                <span style={{ color: S.textMuted, fontSize: 11 }}>第{p.appearances || '?'}场</span>
+                {p.changes && p.changes !== '无变化' && (
+                  <span style={{ color: S.warn, fontSize: 11 }}>⚠ {p.changes}</span>
+                )}
+              </div>
+              <p style={{
+                fontSize: 12.5,
+                color: S.accentLight,
+                fontFamily: 'monospace',
+                lineHeight: 1.8,
+                wordBreak: 'break-all',
+                whiteSpace: 'pre-wrap',
+                margin: 0,
+                padding: '10px 12px',
+                background: 'rgba(124,92,252,0.06)',
+                borderRadius: 8,
+                border: '1px solid rgba(124,92,252,0.12)',
+              }}>
+                {combined || '（无描述词）'}
+              </p>
+            </div>
+          )
+        })}
       </div>
-      <p style={{ fontSize: 11, color: S.textMuted, marginTop: 8 }}>
+      <p style={{ fontSize: 11, color: S.textMuted, marginTop: 10 }}>
         共 {props.length} 个道具
       </p>
     </Card>
