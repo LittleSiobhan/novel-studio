@@ -306,15 +306,23 @@ export default function Dashboard() {
     if (!script.trim()) { setError('请先生成剧本'); return }
     setLoadingAssets(true); setError('')
     try {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 120000)
       const r = await fetch(`${API}/extract-full-assets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ script }),
+        signal: controller.signal,
       })
+      clearTimeout(timer)
       const d = await r.json()
+      if (!r.ok) throw new Error(d.error || '服务器返回错误')
       setAssetData({ characters: d.characters || [], scenes: d.scenes || [], props: d.props || [] })
-      await saveProject({ characters: d.characters, scenes: d.scenes, props: d.props, status: 'assets_done' })
-    } catch { setError('素材提取失败') } finally { setLoadingAssets(false) }
+      try { await saveProject({ characters: d.characters, scenes: d.scenes, props: d.props, status: 'assets_done' }) } catch (_) {}
+    } catch (e) {
+      if (e.name === 'AbortError') setError('请求超时（120秒），请减少剧本字数后重试')
+      else setError('素材提取失败：' + (e.message || '未知错误'))
+    } finally { setLoadingAssets(false) }
   }
 
   return (
