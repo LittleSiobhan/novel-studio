@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useAuth } from '../context/AuthContext'
+import { useAuth, authHeaders } from '../context/AuthContext'
 
 const API = '/api'
 
@@ -238,7 +238,7 @@ export default function Dashboard() {
 
   const loadProjects = async () => {
     try {
-      const r = await fetch(`${API}/projects`)
+      const r = await fetch(`${API}/projects`, { headers: authHeaders() })
       if (r.ok) setProjects(await r.json())
     } catch {}
   }
@@ -248,7 +248,7 @@ export default function Dashboard() {
     setCreating(true)
     try {
       const r = await fetch(`${API}/projects`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: authHeaders(),
         body: JSON.stringify({ name: projectName }),
       })
       const p = await r.json()
@@ -272,7 +272,7 @@ export default function Dashboard() {
 
   const deleteProject = async (id, e) => {
     e.stopPropagation()
-    await fetch(`${API}/projects/${id}`, { method: 'DELETE' })
+    await fetch(`${API}/projects/${id}`, { method: 'DELETE', headers: authHeaders() })
     setProjects(projects.filter(p => p.id !== id))
     if (selected?.id === id) { setSelected(null); resetWork() }
   }
@@ -280,7 +280,7 @@ export default function Dashboard() {
   const saveProject = async (updates) => {
     if (!selected) return
     await fetch(`${API}/projects/${selected.id}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      method: 'PUT', headers: authHeaders(),
       body: JSON.stringify({ ...updates, novel_text: novelText, script }),
     })
   }
@@ -291,7 +291,7 @@ export default function Dashboard() {
     setLoadingScript(true); setError('')
     try {
       const r = await fetch(`${API}/generate-script`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: authHeaders(),
         body: JSON.stringify({ text: novelText, title: selected?.name }),
       })
       const d = await r.json()
@@ -310,7 +310,7 @@ export default function Dashboard() {
       const timer = setTimeout(() => controller.abort(), 120000)
       const r = await fetch(`${API}/extract-full-assets`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ script }),
         signal: controller.signal,
       })

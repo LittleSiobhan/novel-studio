@@ -9,12 +9,13 @@ import re
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
 from sqlalchemy.orm import Session
 import httpx
+import jwt
 
 from models import engine, Base, Project, SessionLocal, init_db
 
@@ -37,6 +38,35 @@ app.add_middleware(
 # ─── Config ────────────────────────────────────────────────
 MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
 MINIMAX_BASE_URL = "https://api.minimaxi.com/anthropic"
+
+# ─── Auth Config ────────────────────────────────────────────
+LOGIN_USERNAME = os.getenv("LOGIN_USERNAME", "littleee")
+LOGIN_PASSWORD = os.getenv("LOGIN_PASSWORD", "little2026")
+JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-production-abc123xyz")
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRE_HOURS = 24 * 365  # 1年有效期（几乎永久）
+
+def create_token(username: str) -> str:
+    payload = {
+        "sub": username,
+        "exp": datetime.utcnow().timestamp() + JWT_EXPIRE_HOURS * 3600,
+        "iat": datetime.utcnow().timestamp(),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+def verify_token(authorization: str) -> dict:
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(401, "无效的认证格式")
+    token = authorization[7:]
+    try:
+        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(401, "Token 已过期，请重新登录")
+    except jwt.InvalidTokenError:
+        raise HTTPException(401, "无效的 Token")
+
+async def require_auth(authorization: str = Header(...)):
+    return verify_token(authorization)
 
 
 # ─── DB Helpers ────────────────────────────────────────────
@@ -161,23 +191,43 @@ async def root():
 async def health():
     return {"status": "ok", "ai_configured": bool(MINIMAX_API_KEY)}
 
+# ─── 登录 ──────────────────────────────────────────────────
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+@app.post("/api/login")
+async def login(req: LoginRequest):
+    if req.username == LOGIN_USERNAME and req.password == LOGIN_PASSWORD:
+        token = create_token(req.username)
+        return {
+            "success": True,
+            "token": token,
+            "user": {
+                "username": req.username,
+                "displayName": "创作者",
+                "role": "writer"
+            }
+        }
+    raise HTTPException(401, "用户名或密码错误")
+
 
 # ─── 项目管理 CRUD ─────────────────────────────────────────
 @app.get("/api/projects", response_model=List[ProjectResponse])
-async def list_projects(db: Session = Depends(get_db)):
+async def list_projects(db: Session = Depends(get_db), _=Depends(require_auth)):
     """列出所有项目"""
     projects = db.query(Project).order_by(Project.updated_at.desc()).all()
     return projects
 
 @app.get("/api/projects/{project_id}", response_model=ProjectResponse)
-async def get_project(project_id: int, db: Session = Depends(get_db)):
+async def get_project(project_id: int, db: Session = Depends(get_db), _=Depends(require_auth)):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(404, "项目不存在")
     return project
 
 @app.post("/api/projects", response_model=ProjectResponse)
-async def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
+async def create_project(project: ProjectCreate, db: Session = Depends(get_db), _=Depends(require_auth)):
     db_project = Project(
         name=project.name,
         description=project.description or "",
@@ -191,7 +241,7 @@ async def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
     return db_project
 
 @app.put("/api/projects/{project_id}", response_model=ProjectResponse)
-async def update_project(project_id: int, update: ProjectUpdate, db: Session = Depends(get_db)):
+async def update_project(project_id: int, update: ProjectUpdate, db: Session = Depends(get_db), _=Depends(require_auth)):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(404, "项目不存在")
@@ -205,7 +255,7 @@ async def update_project(project_id: int, update: ProjectUpdate, db: Session = D
     return project
 
 @app.delete("/api/projects/{project_id}")
-async def delete_project(project_id: int, db: Session = Depends(get_db)):
+async def delete_project(project_id: int, db: Session = Depends(get_db), _=Depends(require_auth)):
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(404, "项目不存在")
@@ -216,7 +266,7 @@ async def delete_project(project_id: int, db: Session = Depends(get_db)):
 
 # ─── 1. 场景提取 ───────────────────────────────────────────
 @app.post("/api/extract-scenes", response_model=SceneExtractResult)
-async def extract_scenes(input: NovelInput):
+async def extract_scenes(input: NovelInput, _=Depends(require_auth)):
     system_prompt = """你是一个专业的影视编剧助手。
 
 收到小说文本后：
@@ -257,7 +307,7 @@ async def extract_scenes(input: NovelInput):
 
 # ─── 1.5 角色提取（从剧本） ─────────────────────────────────
 @app.post("/api/extract-characters")
-async def extract_characters(input: NovelInput):
+async def extract_characters(input: NovelInput, _=Depends(require_auth)):
     """
     从剧本中提取角色列表
     """
@@ -282,7 +332,7 @@ async def extract_characters(input: NovelInput):
 
 # ─── 1.6 道具提取（从剧本） ─────────────────────────────────
 @app.post("/api/extract-props")
-async def extract_props(req: PropsRequest):
+async def extract_props(req: PropsRequest, _=Depends(require_auth)):
     """
     从剧本中提取重要道具/物品
     """
@@ -308,7 +358,7 @@ async def extract_props(req: PropsRequest):
 
 # ─── 1.8 综合素材提取（详细版） ───────────────────────────
 @app.post("/api/extract-full-assets")
-async def extract_full_assets(req: ExtractAssetsRequest):
+async def extract_full_assets(req: ExtractAssetsRequest, _=Depends(require_auth)):
     """
     详细提取剧本中的角色、场景、道具三大类素材，
     输出完整结构化表格，参照剧本素材库提取标准。
@@ -426,7 +476,7 @@ async def extract_full_assets(req: ExtractAssetsRequest):
 
 # ─── 1.7 统一生成提示词 ────────────────────────────────────
 @app.post("/api/generate-prompts")
-async def generate_prompts(req: PromptRequest):
+async def generate_prompts(req: PromptRequest, _=Depends(require_auth)):
     """
     为用户选中的场景/角色/道具生成视觉提示词
     """
@@ -500,7 +550,7 @@ async def generate_prompts(req: PromptRequest):
 
 # ─── 2. 剧本生成 ───────────────────────────────────────────
 @app.post("/api/generate-script", response_model=ScriptGenerateResult)
-async def generate_script(input: NovelInput):
+async def generate_script(input: NovelInput, _=Depends(require_auth)):
     system_prompt = """你是一个专业电影剧本作家。
 
 收到小说文本后，将其改编为标准中文剧本格式。
@@ -529,7 +579,7 @@ async def generate_script(input: NovelInput):
 
 # ─── 3. 分镜生成 ───────────────────────────────────────────
 @app.post("/api/generate-storyboard", response_model=StoryboardResult)
-async def generate_storyboard(scenes: list[dict]):
+async def generate_storyboard(scenes: list[dict], _=Depends(require_auth)):
     system_prompt = """你是一个专业的影视分镜师和AI绘图提示词工程师。
 
 收到场景列表后，为每个场景生成一个分镜卡片，包含：
@@ -573,7 +623,7 @@ async def generate_storyboard(scenes: list[dict]):
 
 # ─── 4. 完整流程 ───────────────────────────────────────────
 @app.post("/api/full-pipeline")
-async def full_pipeline(req: FullPipelineRequest):
+async def full_pipeline(req: FullPipelineRequest, _=Depends(require_auth)):
     scenes_result = await extract_scenes(NovelInput(text=req.text, title=req.title))
     script_result = await generate_script(NovelInput(text=req.text, title=req.title))
     storyboard_result = await generate_storyboard(scenes_result.scenes)

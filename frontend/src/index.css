@@ -13,7 +13,7 @@
   --accent: #7c5cfc;
   --accent-light: #a78bfa;
   --accent-glow: rgba(124, 92, 252, 0.2);
-  --text: #e8e8ed;
+  --text: #ffffff;
   --text-muted: #6b6b7a;
   --error: #fc5c5c;
   --success: #5cffb1;
@@ -28,7 +28,7 @@
 body {
   font-family: 'Noto Sans SC', 'Space Grotesk', sans-serif;
   background: #0a0a0f;
-  color: #e8e8ed;
+  color: #ffffff;
   min-height: 100vh;
   margin: 0;
   padding: 0;
