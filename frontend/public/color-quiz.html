@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>色彩心理测验 — 你是什么色？</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --red: #e74c3c;
+      --blue: #3498db;
+      --yellow: #f1c40f;
+      --green: #27ae60;
+      --black: #2c2c2c;
+      --white: #f5f5f5;
+      --purple: #9b59b6;
+      --orange: #e67e22;
+      --pink: #fd79a8;
+      --teal: #1abc9c;
+    }
+
+    body {
+      font-family: 'Noto Sans SC', sans-serif;
+      background: #0f0f0f;
+      color: #fff;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .screen {
+      display: none;
+      min-height: 100vh;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 20px;
+      animation: fadeIn 0.5s ease;
+    }
+    .screen.active { display: flex; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Welcome Screen */
+    #screen-welcome {
+      background: radial-gradient(ellipse at 50% 40%, #1a1a2e 0%, #0f0f0f 70%);
+      text-align: center;
+    }
+
+    .title-badge {
+      font-size: 12px;
+      letter-spacing: 3px;
+      color: #888;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    .title-main {
+      font-size: clamp(32px, 8vw, 52px);
+      font-weight: 900;
+      line-height: 1.2;
+      background: linear-gradient(135deg, #e74c3c, #f1c40f, #27ae60, #3498db, #9b59b6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 12px;
+    }
+
+    .title-sub {
+      font-size: 16px;
+      color: #666;
+      margin-bottom: 40px;
+    }
+
+    .intro-text {
+      font-size: 14px;
+      color: #888;
+      line-height: 1.8;
+      max-width: 340px;
+      margin: 0 auto 48px;
+    }
+
+    .color-dots {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 48px;
+    }
+    .color-dots span {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      animation: bounce 1.5s infinite;
+    }
+    .color-dots span:nth-child(1) { background: var(--red); animation-delay: 0s; }
+    .color-dots span:nth-child(2) { background: var(--yellow); animation-delay: 0.1s; }
+    .color-dots span:nth-child(3) { background: var(--green); animation-delay: 0.2s; }
+    .color-dots span:nth-child(4) { background: var(--blue); animation-delay: 0.3s; }
+    .color-dots span:nth-child(5) { background: var(--purple); animation-delay: 0.4s; }
+
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); }
+      40% { transform: translateY(-8px); }
+    }
+
+    /* Quiz Screen */
+    #screen-quiz {
+      background: #0f0f0f;
+      justify-content: flex-start;
+      padding-top: 40px;
+    }
+
+    .progress-bar {
+      width: 100%;
+      max-width: 480px;
+      height: 4px;
+      background: #222;
+      border-radius: 2px;
+      margin-bottom: 40px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--red), var(--orange), var(--green));
+      border-radius: 2px;
+      transition: width 0.5s ease;
+    }
+
+    .q-counter {
+      font-size: 13px;
+      color: #555;
+      margin-bottom: 16px;
+      letter-spacing: 1px;
+    }
+
+    .q-text {
+      font-size: clamp(20px, 5vw, 26px);
+      font-weight: 700;
+      text-align: center;
+      line-height: 1.5;
+      margin-bottom: 8px;
+      min-height: 60px;
+    }
+
+    .q-hint {
+      font-size: 13px;
+      color: #555;
+      text-align: center;
+      margin-bottom: 36px;
+    }
+
+    .color-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .color-btn {
+      border: none;
+      border-radius: 16px;
+      padding: 22px 16px;
+      font-family: 'Noto Sans SC', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #fff;
+      transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+      position: relative;
+      overflow: hidden;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .color-btn:active { transform: scale(0.96); }
+    .color-btn:hover { box-shadow: 0 0 0 3px rgba(255,255,255,0.3); }
+
+    .color-btn.red { background: var(--red); }
+    .color-btn.blue { background: var(--blue); }
+    .color-btn.yellow { background: #e0b800; color: #333; text-shadow: none; }
+    .color-btn.green { background: var(--green); }
+    .color-btn.black { background: #2c2c2c; }
+    .color-btn.white { background: #e0e0e0; color: #333; text-shadow: none; }
+    .color-btn.purple { background: var(--purple); }
+    .color-btn.orange { background: var(--orange); }
+    .color-btn.pink { background: var(--pink); }
+    .color-btn.teal { background: var(--teal); }
+
+    /* Result Screen */
+    #screen-result {
+      background: #0f0f0f;
+      text-align: center;
+      justify-content: flex-start;
+      padding-top: 32px;
+    }
+
+    .result-avatar {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 48px;
+      box-shadow: 0 0 60px rgba(255,255,255,0.1);
+      animation: pulse 3s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 30px rgba(255,255,255,0.05); }
+      50% { box-shadow: 0 0 60px rgba(255,255,255,0.15); }
+    }
+
+    .result-type {
+      font-size: clamp(24px, 6vw, 32px);
+      font-weight: 900;
+      margin-bottom: 6px;
+    }
+
+    .result-sub {
+      font-size: 14px;
+      color: #555;
+      margin-bottom: 24px;
+    }
+
+    .result-desc {
+      font-size: 15px;
+      color: #aaa;
+      line-height: 1.9;
+      max-width: 360px;
+      margin: 0 auto 32px;
+      text-align: left;
+    }
+
+    .result-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-bottom: 32px;
+    }
+    .tag {
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      opacity: 0.85;
+    }
+
+    .result-share-hint {
+      font-size: 12px;
+      color: #444;
+      margin-bottom: 16px;
+      letter-spacing: 1px;
+    }
+
+    .action-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #444, #333);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 14px 32px;
+      font-family: 'Noto Sans SC', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-primary:active { opacity: 0.8; }
+
+    .btn-secondary {
+      background: transparent;
+      color: #888;
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 14px 24px;
+      font-family: 'Noto Sans SC', sans-serif;
+      font-size: 14px;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .btn-secondary:active { border-color: #666; color: #aaa; }
+
+    .color-bar {
+      width: 100%;
+      max-width: 380px;
+      margin: 24px auto 0;
+    }
+    .color-bar-title {
+      font-size: 12px;
+      color: #555;
+      text-align: left;
+      margin-bottom: 10px;
+    }
+    .color-bar-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .color-bar-label {
+      font-size: 12px;
+      width: 16px;
+      text-align: center;
+    }
+    .color-bar-track {
+      flex: 1;
+      height: 8px;
+      background: #1a1a1a;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .color-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 1s ease;
+    }
+
+    /* Shake animation */
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-6px); }
+      40% { transform: translateX(6px); }
+      60% { transform: translateX(-4px); }
+      80% { transform: translateX(4px); }
+    }
+    .shake { animation: shake 0.4s ease; }
+  </style>
+</head>
+<body>
+
+<!-- Screen: Welcome -->
+<div id="screen-welcome" class="screen active">
+  <div class="title-badge">Psychology Quiz</div>
+  <h1 class="title-main">你是什么色？</h1>
+  <p class="title-sub">基于《色彩的性格》心理学研究</p>
+  <p class="intro-text">
+    每种颜色都有自己的「性格」。通过 8 道简单选择题，<br/>
+    探索你潜意识中最倾向的颜色，<br/>
+    揭晓你的隐藏人格特质 🐱
+  </p>
+  <div class="color-dots">
+    <span></span><span></span><span></span><span></span><span></span>
+  </div>
+  <button class="btn-primary" onclick="startQuiz()">开始测验 →</button>
+</div>
+
+<!-- Screen: Quiz -->
+<div id="screen-quiz" class="screen">
+  <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  <div class="q-counter" id="qCounter">1 / 8</div>
+  <div class="q-text" id="qText"></div>
+  <div class="q-hint" id="qHint"></div>
+  <div class="color-grid" id="colorGrid"></div>
+</div>
+
+<!-- Screen: Result -->
+<div id="screen-result" class="screen">
+  <div class="result-avatar" id="resultAvatar"></div>
+  <div class="result-type" id="resultType"></div>
+  <div class="result-sub" id="resultSub"></div>
+  <div class="result-tags" id="resultTags"></div>
+  <div class="result-desc" id="resultDesc"></div>
+  <div class="color-bar">
+    <div class="color-bar-title">你的色彩构成</div>
+    <div id="colorBarContainer"></div>
+  </div>
+  <div class="result-share-hint">转发给朋友，看看他们是什么色</div>
+  <div class="action-row">
+    <button class="btn-primary" onclick="restartQuiz()">再做一次</button>
+    <button class="btn-secondary" onclick="shareResult()">分享结果</button>
+  </div>
+</div>
+
+<script>
+// ── Quiz Data ──────────────────────────────────────────────
+const questions = [
+  {
+    text: "想象你走进一间房间，",
+    text2: "墙壁让你感觉最舒服的是？",
+    hint: "选让你感到安心的颜色",
+    options: [
+      { label: "纯净白", color: "white", val: { blue: 1, white: 2 } },
+      { label: "森林绿", color: "green", val: { green: 2, blue: 1 } },
+      { label: "天空蓝", color: "blue", val: { blue: 2, green: 1 } },
+      { label: "柔和粉", color: "pink", val: { pink: 2, red: 1 } },
+    ]
+  },
+  {
+    text: "朋友向你倾诉烦恼，",
+    text2: "你更倾向穿什么颜色倾听？",
+    hint: "代表你给他的情绪支持",
+    options: [
+      { label: "沉稳黑", color: "black", val: { black: 2, blue: 1 } },
+      { label: "温暖橙", color: "orange", val: { orange: 2, yellow: 1 } },
+      { label: "平静蓝", color: "blue", val: { blue: 2, green: 1 } },
+      { label: "治愈绿", color: "green", val: { green: 2, blue: 1 } },
+    ]
+  },
+  {
+    text: "你希望在职场中被视为？",
+    hint: "你偏好的职业形象",
+    options: [
+      { label: "权威黑", color: "black", val: { black: 2, red: 1 } },
+      { label: "专业蓝", color: "blue", val: { blue: 2, black: 1 } },
+      { label: "创新紫", color: "purple", val: { purple: 2, orange: 1 } },
+      { label: "活力橙", color: "orange", val: { orange: 2, yellow: 1 } },
+    ]
+  },
+  {
+    text: "以下哪个词最能触动你？",
+    hint: "直觉选择",
+    options: [
+      { label: "激情", color: "red", val: { red: 3 } },
+      { label: "自由", color: "blue", val: { blue: 2, green: 1 } },
+      { label: "温暖", color: "yellow", val: { yellow: 2, orange: 1 } },
+      { label: "神秘", color: "purple", val: { purple: 2, black: 1 } },
+    ]
+  },
+  {
+    text: "你计划一场旅行，",
+    text2: "最想去的目的地是？",
+    hint: "你向往的精神色彩",
+    options: [
+      { label: "热带海岛", color: "teal", val: { teal: 2, blue: 1 } },
+      { label: "金色沙漠", color: "yellow", val: { yellow: 2, orange: 1 } },
+      { label: "北欧森林", color: "green", val: { green: 2, blue: 1 } },
+      { label: "紫醉巴黎", color: "purple", val: { purple: 2, pink: 1 } },
+    ]
+  },
+  {
+    text: "以下哪种表达最接近",
+    text2: "你对生活的态度？",
+    hint: "",
+    options: [
+      { label: "热烈而深刻", color: "red", val: { red: 2, black: 1 } },
+      { label: "平静而有力量", color: "blue", val: { blue: 2, green: 1 } },
+      { label: "阳光而好奇", color: "yellow", val: { yellow: 2, orange: 1 } },
+      { label: "低调而有内涵", color: "black", val: { black: 2, purple: 1 } },
+    ]
+  },
+  {
+    text: "你的另一半在你眼中",
+    text2: "最吸引你的特质是？",
+    hint: "你被什么颜色的人吸引",
+    options: [
+      { label: "热情浪漫", color: "red", val: { red: 2, pink: 1 } },
+      { label: "温柔体贴", color: "pink", val: { pink: 2, white: 1 } },
+      { label: "睿智深沉", color: "blue", val: { blue: 2, black: 1 } },
+      { label: "幽默活力", color: "orange", val: { orange: 2, yellow: 1 } },
+    ]
+  },
+  {
+    text: "如果你是设计师，",
+    text2: "你的作品最想传递？",
+    hint: "你灵魂深处的色彩主张",
+    options: [
+      { label: "打破规则的叛逆", color: "red", val: { red: 2, purple: 1 } },
+      { label: "科技与信任", color: "blue", val: { blue: 3 } },
+      { label: "自然与生机", color: "green", val: { green: 2, teal: 1 } },
+      { label: "优雅与极致", color: "black", val: { black: 2, purple: 1 } },
+    ]
+  }
+];
+
+// Color definitions
+const colorNames = {
+  red: { name: "红", css: "#e74c3c", desc: "热烈" },
+  blue: { name: "蓝", css: "#3498db", desc: "沉稳" },
+  yellow: { name: "黄", css: "#f1c40f", desc: "阳光" },
+  green: { name: "绿", css: "#27ae60", desc: "平和" },
+  black: { name: "黑", css: "#2c2c2c", desc: "深邃" },
+  white: { name: "白", css: "#e0e0e0", desc: "纯粹" },
+  purple: { name: "紫", css: "#9b59b6", desc: "神秘" },
+  orange: { name: "橙", css: "#e67e22", desc: "活力" },
+  pink: { name: "粉", css: "#fd79a8", desc: "温柔" },
+  teal: { name: "青", css: "#1abc9c", desc: "清新" },
+};
+
+// Personality types
+const personalities = [
+  {
+    key: "blue",
+    emoji: "🩵",
+    type: "蓝",
+    subtitle: "你最像「蓝色」— 信任的守护者",
+    tags: [
+      { text: "理性深沉", bg: "#3498db" },
+      { text: "值得信赖", bg: "#2471a3" },
+      { text: "内心平静", bg: "#2ecc71" },
+    ],
+    desc: "蓝色是你灵魂的底色。你重视深度而非广度，善于倾听和思考，在喧嚣中保持冷静。你不是最耀眼的存在，但却是朋友遇到困难时第一个想到的人。你的忠诚像深海，一旦认定，便不会动摇。\n\n在《色彩的性格》中，海勒指出蓝色是全球最受欢迎的颜色——41%的人选择它为代表色，因为它象征着信任与稳定。Facebook、Twitter、LinkedIn 选用蓝色，正是因为蓝色能传递可靠、专业的感觉。",
+    traits: { blue: 5, black: 2, green: 2, white: 1 }
+  },
+  {
+    key: "red",
+    emoji: "❤️",
+    type: "红",
+    subtitle: "你最像「红色」— 生命的燃烧者",
+    tags: [
+      { text: "热情澎湃", bg: "#e74c3c" },
+      { text: "敢于冒险", bg: "#c0392b" },
+      { text: "充满魅力", bg: "#e67e22" },
+    ],
+    desc: "红色是你的能量色。你活在当下，爱恨分明，情绪浓烈而真实。你不喜欢犹疑不决，要么全力以赴，要么彻底放弃。\n\n海勒的调查揭示，红色是最有力量的颜色，也是情感跨度最大的颜色——从情欲到暴力，从美丽到危险。加速心跳、刺激食欲、 提高肌肉张力——你的身体里住着一团不灭的火焰。",
+    traits: { red: 5, orange: 2, purple: 1, black: 1 }
+  },
+  {
+    key: "yellow",
+    emoji: "💛",
+    type: "黄",
+    subtitle: "你最像「黄色」— 阳光的传播者",
+    tags: [
+      { text: "乐观积极", bg: "#f1c40f" },
+      { text: "充满创意", bg: "#e67e22" },
+      { text: "好奇心强", bg: "#f39c12" },
+    ],
+    desc: "黄色是你灵魂的温度。你自带阳光，走到哪都能点亮周围人的心情。你对新事物永远充满好奇，思维跳跃，总能在平凡中发现乐趣。\n\n海勒的研究发现，黄色是视网膜最敏感的颜色——也是最容易被注意到的颜色。但黄色也是最矛盾的颜色之一：快乐与嫉妒，阳光与背叛，都可以是黄色。你是那份既温暖又需要被理解的存在。",
+    traits: { yellow: 4, orange: 3, red: 1, green: 1 }
+  },
+  {
+    key: "green",
+    emoji: "💚",
+    type: "绿",
+    subtitle: "你最像「绿色」— 和平的践行者",
+    tags: [
+      { text: "心态平和", bg: "#27ae60" },
+      { text: "热爱自然", bg: "#1e8449" },
+      { text: "包容力强", bg: "#2ecc71" },
+    ],
+    desc: "绿色是你生命的底色。你不急不躁，追求平衡，在快节奏的世界里保持自己的节奏。你是很好的调解者，因为你能同时理解多方的立场。\n\n海勒说，绿色是最平衡的颜色，也是最"中性"的感觉——既不太暖也不太冷。你是那种让人想靠近的大自然气息，在钢筋水泥中给身边人一片精神的绿洲。",
+    traits: { green: 5, blue: 2, teal: 2, white: 1 }
+  },
+  {
+    key: "black",
+    emoji: "🖤",
+    type: "黑",
+    subtitle: "你最像「黑色」— 优雅的掌控者",
+    tags: [
+      { text: "神秘深邃", bg: "#2c2c2c" },
+      { text: "品位出众", bg: "#444" },
+      { text: "内心强大", bg: "#111" },
+    ],
+    desc: "黑色是你的保护色，也是你的名片。你优雅、有品位，不轻易让人看透内心。时尚界最爱黑色不是没有原因——它显瘦、显气场、显权威。\n\n海勒指出，黑色是最复杂的颜色之一：优雅与权力、神秘与哀悼、死亡与永恒，都集中在黑色里。你不需要用色彩证明自己，你的存在本身就是一种声明。",
+    traits: { black: 5, purple: 2, blue: 2, red: 1 }
+  },
+  {
+    key: "purple",
+    emoji: "💜",
+    type: "紫",
+    subtitle: "你最像「紫色」— 创意的梦想家",
+    tags: [
+      { text: "创意无限", bg: "#9b59b6" },
+      { text: "直觉敏锐", bg: "#8e44ad" },
+      { text: "品味独特", bg: "#6c3483" },
+    ],
+    desc: "紫色是你灵魂的魔法。你不属于任何一个常规格子，你的思维方式总是出人意料。历史上，紫色曾是皇帝和贵族的专属——昂贵、稀有、神秘。\n\n海勒说，紫色是最"矛盾"的颜色之一：高贵与做作、创造力与自负，都可以是紫色。你是人群中最难被定义的那个，而这就是你最迷人的地方。",
+    traits: { purple: 5, black: 2, pink: 2, blue: 1 }
+  },
+  {
+    key: "orange",
+    emoji: "🧡",
+    type: "橙",
+    subtitle: "你最像「橙色」— 活力的冒险家",
+    tags: [
+      { text: "活力四射", bg: "#e67e22" },
+      { text: "社交达人", bg: "#d35400" },
+      { text: "行动力强", bg: "#f39c12" },
+    ],
+    desc: "橙色是你的生命力。你自带能量场，是朋友圈里的气氛发动机。你敢于尝试，不惧失败，把每一天都活得像冒险。\n\n海勒的研究提到，橙色代表活力、热情、创造力——但也可能代表廉价和俗气（想想那些过于鲜艳的塑料椅子）。你是那种能把"俗气"变成"活力"的存在，因为自信才是橙色的真谛。",
+    traits: { orange: 4, yellow: 3, red: 2, pink: 1 }
+  },
+  {
+    key: "pink",
+    emoji: "🩷",
+    type: "粉",
+    subtitle: "你最像「粉色」— 温柔的力量者",
+    tags: [
+      { text: "内心柔软", bg: "#fd79a8" },
+      { text: "共情力强", bg: "#e84393" },
+      { text: "浪漫主义", bg: "#ff6b81" },
+    ],
+    desc: "粉色是你柔软的力量。你不靠强势征服世界，而是用理解和共情连接他人。你相信美好，也愿意为美好付出。\n\n海勒指出，粉色代表浪漫、温柔、女性——但也有"粉红税"这样揭示社会不公的一面。你是那种既有少女心、也有大女主力量的存在，能在坚硬的世界里保持柔软，是一种难得的能力。",
+    traits: { pink: 4, white: 3, red: 2, purple: 1 }
+  },
+];
+
+// ── State ───────────────────────────────────────────────────
+let currentQ = 0;
+let scores = {};
+
+function startQuiz() {
+  currentQ = 0;
+  scores = {};
+  showScreen('screen-quiz');
+  renderQuestion();
+}
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function renderQuestion() {
+  const q = questions[currentQ];
+  document.getElementById('qCounter').textContent = `${currentQ + 1} / ${questions.length}`;
+  document.getElementById('qText').innerHTML = q.text + (q.text2 ? '<br/>' + q.text2 : '');
+  document.getElementById('qHint').textContent = q.hint || '';
+
+  const pct = (currentQ / questions.length) * 100;
+  document.getElementById('progressFill').style.width = pct + '%';
+
+  const grid = document.getElementById('colorGrid');
+  grid.innerHTML = '';
+  q.options.forEach((opt, i) => {
+    const btn = document.createElement('button');
+    btn.className = `color-btn ${opt.color}`;
+    btn.textContent = opt.label;
+    btn.style.animationDelay = (i * 0.08) + 's';
+    btn.onclick = () => selectAnswer(opt);
+    grid.appendChild(btn);
+  });
+}
+
+function selectAnswer(opt) {
+  // Accumulate scores
+  for (const [k, v] of Object.entries(opt.val)) {
+    scores[k] = (scores[k] || 0) + v;
+  }
+
+  // Disable all buttons briefly
+  document.querySelectorAll('.color-btn').forEach(b => {
+    b.style.pointerEvents = 'none';
+    b.style.opacity = '0.5';
+  });
+
+  // Highlight selected
+  event.currentTarget.style.opacity = '1';
+  event.currentTarget.style.boxShadow = `0 0 30px ${event.currentTarget.style.background}`;
+
+  setTimeout(() => {
+    currentQ++;
+    if (currentQ < questions.length) {
+      renderQuestion();
+    } else {
+      showResult();
+    }
+  }, 400);
+}
+
+function showResult() {
+  // Find dominant color
+  let dominant = 'blue';
+  let maxScore = 0;
+  for (const [k, v] of Object.entries(scores)) {
+    if (v > maxScore) {
+      maxScore = v;
+      dominant = k;
+    }
+  }
+
+  // Find matching personality
+  const p = personalities.find(p => p.key === dominant) || personalities[0];
+
+  // Total for percentages
+  const total = Object.values(scores).reduce((a, b) => a + b, 0);
+
+  // Render result screen
+  document.getElementById('resultAvatar').textContent = p.emoji;
+  document.getElementById('resultAvatar').style.background = p.tags[0].bg;
+  document.getElementById('resultType').textContent = p.type;
+  document.getElementById('resultType').style.background = `linear-gradient(135deg, ${p.tags[0].bg}, ${p.tags[1].bg})`;
+  document.getElementById('resultType').style.webkitBackgroundClip = 'text';
+  document.getElementById('resultType').style.webkitTextFillColor = 'transparent';
+  document.getElementById('resultType').style.backgroundClip = 'text';
+  document.getElementById('resultSub').textContent = p.subtitle;
+  document.getElementById('resultDesc').textContent = p.desc;
+
+  // Tags
+  const tagsEl = document.getElementById('resultTags');
+  tagsEl.innerHTML = '';
+  p.tags.forEach(t => {
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = t.text;
+    tag.style.background = t.bg;
+    tagsEl.appendChild(tag);
+  });
+
+  // Color bars — top 6 colors
+  const barContainer = document.getElementById('colorBarContainer');
+  barContainer.innerHTML = '';
+  const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  sorted.forEach(([color, score]) => {
+    const pct = Math.round((score / total) * 100);
+    const cn = colorNames[color];
+    const row = document.createElement('div');
+    row.className = 'color-bar-row';
+    row.innerHTML = `
+      <span class="color-bar-label" style="color:${cn.css}">${cn.name}</span>
+      <div class="color-bar-track">
+        <div class="color-bar-fill" style="width:0%;background:${cn.css}" data-width="${pct}%"></div>
+      </div>
+    `;
+    barContainer.appendChild(row);
+  });
+
+  showScreen('screen-result');
+
+  // Animate bars after a tick
+  setTimeout(() => {
+    document.querySelectorAll('.color-bar-fill').forEach(bar => {
+      bar.style.width = bar.dataset.width;
+    });
+  }, 100);
+}
+
+function restartQuiz() {
+  startQuiz();
+}
+
+function shareResult() {
+  const dominant = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
+  const p = personalities.find(x => x.key === dominant[0]);
+  const text = `我的色彩人格测验结果是「${p.type}」！${p.subtitle}\n\n你也来试试？🔗 littleee.cloud`;
+  if (navigator.share) {
+    navigator.share({ title: '色彩人格测验', text });
+  } else {
+    navigator.clipboard.writeText(text).then(() => {
+      alert('结果已复制到剪贴板！');
+    });
+  }
+}
+</script>
+</body>
+</html>

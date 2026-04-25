@@ -1,0 +1,747 @@
+"""
+小说 → 剧本 → 分镜 工作站后端
+完整版：AI处理 + 项目存储
+"""
+import os
+import json
+import asyncio
+import re
+from datetime import datetime
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional, List, Union
+from sqlalchemy.orm import Session
+import httpx
+import jwt
+
+from models import engine, Base, Project, SessionLocal, init_db
+
+# ─── Lifespan ──────────────────────────────────────────────
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()  # 启动时创建表
+    yield
+
+app = FastAPI(title="📚 小说工作站 API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ─── Config ────────────────────────────────────────────────
+MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
+MINIMAX_BASE_URL = "https://api.minimax.chat/anthropic"
+
+# ─── Auth Config ────────────────────────────────────────────
+LOGIN_USERNAME = os.getenv("LOGIN_USERNAME", "littleee")
+LOGIN_PASSWORD = os.getenv("LOGIN_PASSWORD", "little2026")
+JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-production-abc123xyz")
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRE_HOURS = 24 * 365  # 1年有效期（几乎永久）
+
+def create_token(username: str) -> str:
+    payload = {
+        "sub": username,
+        "exp": datetime.utcnow().timestamp() + JWT_EXPIRE_HOURS * 3600,
+        "iat": datetime.utcnow().timestamp(),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+def verify_token(authorization: str) -> dict:
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(401, "无效的认证格式")
+    token = authorization[7:]
+    try:
+        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(401, "Token 已过期，请重新登录")
+    except jwt.InvalidTokenError:
+        raise HTTPException(401, "无效的 Token")
+
+async def require_auth(authorization: str = Header(...)):
+    return verify_token(authorization)
+
+
+# ─── DB Helpers ────────────────────────────────────────────
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+# ─── Pydantic Models ───────────────────────────────────────
+class ProjectCreate(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    novel_text: Optional[str] = ""
+    settings: Optional[dict] = {}
+
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    novel_text: Optional[str] = None
+    script: Optional[str] = None
+    storyboards: Optional[list] = None
+    characters: Optional[list] = None
+    scenes: Optional[list] = None
+    props: Optional[list] = None
+    settings: Optional[dict] = None
+    status: Optional[str] = None
+
+class ProjectResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    novel_text: Optional[str]
+    script: Optional[str]
+    storyboards: Optional[list]
+    characters: Optional[list]
+    scenes: Optional[list]
+    props: Optional[list]
+    settings: Optional[dict]
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class NovelInput(BaseModel):
+    text: str
+    title: Optional[str] = "未命名小说"
+    style: Optional[Union[str, List[str]]] = "写实电影"
+
+class SceneExtractResult(BaseModel):
+    scenes: list[dict]
+    total_chars: int
+
+class CharactersRequest(BaseModel):
+    characters: list[str]
+
+class PropsRequest(BaseModel):
+    script: str
+
+class PromptRequest(BaseModel):
+    """用户选择的待生成提示词的项目"""
+    scenes: Optional[list[dict]] = None   # 选中的场景 [{scene_id, visual_prompt}]
+    characters: Optional[list[dict]] = None  # 选中的角色 [{name, visual_prompt}]
+    props: Optional[list[dict]] = None   # 选中的道具 [{name, visual_prompt}]
+
+class ExtractAssetsRequest(BaseModel):
+    """综合素材提取请求"""
+    script: str
+    title: Optional[str] = "未命名"
+
+class ScriptGenerateResult(BaseModel):
+    script: str
+    scene_count: int
+
+class StoryboardResult(BaseModel):
+    storyboards: list[dict]
+    total_scenes: int
+
+class FullPipelineRequest(BaseModel):
+    text: str
+    title: Optional[str] = "未命名小说"
+
+# ─── AI Helper ─────────────────────────────────────────────
+async def call_minimax(system: str, user: str) -> str:
+    if not MINIMAX_API_KEY:
+        raise HTTPException(500, "MINIMAX_API_KEY 未配置")
+    
+    async with httpx.AsyncClient(timeout=120) as client:
+        resp = await client.post(
+            f"{MINIMAX_BASE_URL}/v1/messages",
+            headers={
+                "Authorization": f"Bearer {MINIMAX_API_KEY}",
+                "Content-Type": "application/json",
+                "anthropic-version": "2023-06-01",
+            },
+            json={
+                "model": "MiniMax-M2.7",
+                "max_tokens": 4096,
+                "system": system,
+                "messages": [{"role": "user", "content": user}],
+            },
+        )
+        if resp.status_code != 200:
+            raise HTTPException(500, f"AI API 错误: {resp.status_code} - {resp.text}")
+        data = resp.json()
+        for item in data.get("content", []):
+            if item.get("type") == "text":
+                return item["text"]
+        raise HTTPException(500, f"AI 返回格式异常：{json.dumps(data.get('content', []), ensure_ascii=False)[:300]}")
+
+
+# ─── API Routes ────────────────────────────────────────────
+
+@app.get("/")
+async def root():
+    return {"message": "📚 小说工作站 API 正常运行", "version": "1.0.0"}
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "ai_configured": bool(MINIMAX_API_KEY)}
+
+# ─── 登录 ──────────────────────────────────────────────────
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+@app.post("/api/login")
+async def login(req: LoginRequest):
+    if req.username == LOGIN_USERNAME and req.password == LOGIN_PASSWORD:
+        token = create_token(req.username)
+        return {
+            "success": True,
+            "token": token,
+            "user": {
+                "username": req.username,
+                "displayName": "创作者",
+                "role": "writer"
+            }
+        }
+    raise HTTPException(401, "用户名或密码错误")
+
+
+# ─── 项目管理 CRUD ─────────────────────────────────────────
+@app.get("/api/projects", response_model=List[ProjectResponse])
+async def list_projects(db: Session = Depends(get_db), _=Depends(require_auth)):
+    """列出所有项目"""
+    projects = db.query(Project).order_by(Project.updated_at.desc()).all()
+    return projects
+
+@app.get("/api/projects/{project_id}", response_model=ProjectResponse)
+async def get_project(project_id: int, db: Session = Depends(get_db), _=Depends(require_auth)):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(404, "项目不存在")
+    return project
+
+@app.post("/api/projects", response_model=ProjectResponse)
+async def create_project(project: ProjectCreate, db: Session = Depends(get_db), _=Depends(require_auth)):
+    db_project = Project(
+        name=project.name,
+        description=project.description or "",
+        novel_text=project.novel_text or "",
+        settings=project.settings or {},
+        status="draft",
+    )
+    db.add(db_project)
+    db.commit()
+    db.refresh(db_project)
+    return db_project
+
+@app.put("/api/projects/{project_id}", response_model=ProjectResponse)
+async def update_project(project_id: int, update: ProjectUpdate, db: Session = Depends(get_db), _=Depends(require_auth)):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(404, "项目不存在")
+    
+    for field, value in update.model_dump(exclude_unset=True).items():
+        setattr(project, field, value)
+    
+    project.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(project)
+    return project
+
+@app.delete("/api/projects/{project_id}")
+async def delete_project(project_id: int, db: Session = Depends(get_db), _=Depends(require_auth)):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(404, "项目不存在")
+    db.delete(project)
+    db.commit()
+    return {"message": "删除成功"}
+
+
+# ─── 1. 场景提取 ───────────────────────────────────────────
+@app.post("/api/extract-scenes", response_model=SceneExtractResult)
+async def extract_scenes(input: NovelInput, _=Depends(require_auth)):
+    system_prompt = """你是一个专业的影视编剧助手。
+
+收到小说文本后：
+1. 提取所有出现的角色名字（按出现顺序列出）
+2. 将小说切割成独立场景（基于：时间变化、地点变化、人物变化）
+3. 每个场景输出 JSON 格式：
+   - scene_id: 场景编号
+   - location: 室内/室外 + 具体地点
+   - time: 时间（白天/夜晚/凌晨等）
+   - characters: 出场的角色列表
+   - summary: 30字以内的场景概要
+   - key_dialogue: 最能代表这场戏的一句对话（无对话则省略）
+
+最终输出一个完整的 JSON 对象，格式如下：
+{
+  "characters": ["角色1", "角色2", ...],
+  "scenes": [场景1, 场景2, ...]
+}
+
+只输出 JSON，不要其他文字。"""
+
+    raw = await call_minimax(system_prompt, f"小说标题：{input.title}\n\n{input.text[:8000]}")
+    
+    try:
+        match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
+        if match:
+            data = json.loads(match.group(1))
+        else:
+            data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise HTTPException(500, f"AI 返回格式错误，无法解析场景: {e}\n\n原始输出:\n{raw[:500]}")
+
+    return SceneExtractResult(
+        scenes=data.get("scenes", []),
+        total_chars=len(input.text),
+    )
+
+
+# ─── 1.5 角色提取（从剧本） ─────────────────────────────────
+@app.post("/api/extract-characters")
+async def extract_characters(input: NovelInput, _=Depends(require_auth)):
+    """
+    从剧本中提取角色列表
+    """
+    system_prompt = """你是一个专业的影视编剧助手。
+
+分析以下剧本，提取所有出现的角色。
+
+输出 JSON 数组，每个角色包含：
+- name: 角色姓名
+- role: 角色定位（例：男主角、女主角、反派、配角等）
+
+只输出 JSON 数组，不要其他文字。"""
+
+    raw = await call_minimax(system_prompt, f"剧本：\n{input.text[:8000]}")
+    try:
+        match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
+        data = json.loads(match.group(1)) if match else json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise HTTPException(500, f"AI 返回格式错误: {e}\n\n{raw[:300]}")
+    return {"characters": data, "total": len(data)}
+
+
+# ─── 1.6 道具提取（从剧本） ─────────────────────────────────
+@app.post("/api/extract-props")
+async def extract_props(req: PropsRequest, _=Depends(require_auth)):
+    """
+    从剧本中提取重要道具/物品
+    """
+    system_prompt = """你是一个专业的影视美术指导。
+
+分析以下剧本，提取所有重要的道具、物品、场景元素。
+
+输出 JSON 数组，每个道具包含：
+- name: 道具名称
+- description: 道具的外观和用途描述
+- scene_where: 出现在哪场戏
+
+只输出 JSON 数组，不要其他文字。"""
+
+    raw = await call_minimax(system_prompt, f"剧本：\n{req.script[:8000]}")
+    try:
+        match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
+        data = json.loads(match.group(1)) if match else json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise HTTPException(500, f"AI 返回格式错误: {e}\n\n{raw[:300]}")
+    return {"props": data, "total": len(data)}
+
+
+# ─── 1.8 综合素材提取（详细版） ───────────────────────────
+@app.post("/api/extract-full-assets")
+async def extract_full_assets(req: ExtractAssetsRequest, _=Depends(require_auth)):
+    """
+    详细提取剧本中的角色、场景、道具三大类素材，
+    输出完整结构化表格，参照剧本素材库提取标准。
+    """
+    # Step 1: 提取角色
+    chars_prompt = """你是一个专业的影视美术设计师和人物设定专家。
+
+分析以下剧本，提取所有出现的角色（含路人、配角），输出JSON数组。
+
+每个角色必须包含以下16个字段：
+1. name: 角色姓名（无名角色标注"配角1""路人2"等，区分不同个体）
+2. role: 角色定位（主角/配角/反派/路人等）
+3. gender: 性别（从台词/动作/称呼推断男/女/未知）
+4. age: 年龄（精确到范围如"18-22岁"，禁用"年轻""年长"等模糊表述，如剧本未明确写"未提及"）
+5. height: 身高（精确到范围+体态如"175cm，挺拔修长"，如未明确写"未提及"）
+6. body_type: 体型（具体描述如"纤瘦/匀称/微胖/健壮"，可加细节，如未明确写"未提及"）
+7. hairstyle: 发型（具体样式+细节如"齐肩直发，发尾微卷，无刘海"，如未明确写"未提及"）
+8. hair_color: 发色（精准+光泽感如"乌黑发亮"或"浅棕哑光"，如未明确写"未提及"）
+9. face_shape: 脸型（具体脸型+细节如"圆脸，脸颊有婴儿肥"，如未明确写"未提及"）
+10. eyes: 眼睛/瞳孔（眼形+瞳色+细节如"杏眼，瞳孔漆黑，眼尾微上挑"，如未明确写"未提及"）
+11. skin: 肤色（具体肤色+质感如"冷白皮，细腻无瑕疵"，如未明确写"未提及"）
+12. outfit: 服装（款式+颜色+材质+细节，结合角色身份和场景，如未明确写"未提及"）
+13. accessories: 饰品（所有佩戴饰品，具体描述每件，无则填"无"）
+14. personality: 性格（具体特质+剧本细节佐证）
+15. appearances: 出场集数（标注所有出场集数，重复出场列全）
+16. visual_prompt: **文生图描述词**：整合以上所有视觉要素，写成**一气呵成的连贯句子**（像小说描写那样流畅），中文，不要列表式罗列
+
+文生图描述词示例（连贯句子，不是列表）：
+22岁女性站在窗边，168cm的身高匀称修长，齐肩亚麻灰卷发在午后阳光下泛着柔和光泽，鹅蛋脸线条柔美，杏眼里琥珀色瞳孔清澈透亮，冷白皮细腻无瑕，身穿米白色针织连衣裙服帖修身，银色细项链和珍珠耳环随着呼吸轻轻晃动，气质温柔内敛，整体给人清新温婉的印象，高清写实摄影风格
+
+**关键要求：即使剧本只有少量描述，也必须为每个角色输出完整的16个字段，绝不可返回空数组。visual_prompt 必须写成连贯流畅的一句话，像小说描写那样自然，不能是字段列表。**
+
+只输出JSON数组，不要其他文字。"""
+
+
+    scenes_prompt = """你是一个专业的影视分镜师和场景美术设计师。
+
+分析以下剧本，逐字逐句通读，提取所有出现的场景，输出JSON数组。同一地点不同空间单独提取（如"客厅"和"卧室"分开）。
+
+每个场景必须包含以下16个字段：
+1. scene_id: 场景编号
+2. scene_name: 精确场景名称（格式："地点（具体位置/归属）"，如"悬崖峭壁（修仙世界）""客厅（主角家）""咖啡馆（街角）"，无归属可写地点简称）
+3. appearances: 出场集数
+4. time: 精确时刻（如"清晨6点""深夜11点""阴天午后"）
+5. weather: 天气（室外明确天气；室内标"室内无天气影响"，有窗补充窗外天气）
+6. light_source: 光源类型+质感+氛围（如"暖黄吊灯，光线柔和有晕，营造温馨感"）
+7. space_type: 大类+细分（如"室内住宅-主卧""室外街道-老街区""室外地形-悬崖"）
+8. space_scale: 面积估算（如"约15㎡""开阔视野无遮挡""崖壁垂直约30米高"）
+9. height: 层高或空间高度（如"层高2.8米""崖壁垂直高度约30米"）
+10. main_elements: 核心陈设物+细节描述
+11. foreground: 前景元素+具体描述
+12. mood: 情绪词+场景细节支撑（如"紧张危急、清冷孤寂"）
+13. style: 整体风格+细节（如"武侠玄幻风格，荒野险峻""简约现代都市风"）
+14. shot_type: 景别（全景/中景/近景/特写/远景）
+15. camera_angle: 视角设定（平视/俯视/仰视/侧视+补充说明）
+16. visual_prompt_no_chars: **文生图描述词**，严禁出现任何人物，中文，写成**一气呵成的连贯句子**（像小说描写那样流畅），整合空间+光线+氛围+陈设，不要列表式罗列
+
+文生图描述词示例（连贯句子，不是列表）：
+清晨破晓时分，险峻的悬崖峭壁如刀削般矗立眼前，崖壁垂直约三十米，晨光穿透薄雾洒在陡峭岩面上泛出冷冽的光泽，崖缝中一棵老松虬枝横生针叶墨绿，雾气缭绕于山峦之间若隐若现，远处层叠山峦在晨曦中呈现出幽蓝的轮廓，整体氛围紧张中透着清冷孤寂的仙侠意境，高清写实摄影风格，画面中无任何人物元素
+
+只输出JSON数组，不要其他文字。"""
+
+    props_prompt = """你是一个专业的影视美术指导。
+
+分析以下剧本，提取所有出现的道具（哪怕是背景中的），输出JSON数组。
+
+每个道具必须包含以下5个字段：
+1. name: 道具精确名称（如"黑色皮质笔记本""陶瓷水杯""旧雨伞""苹果13手机"）
+2. appearances: 出场集数
+3. changes: 道具变化（如"第1集为新品，第5集封面磨损破旧"，无则填"无变化"）
+4. visual_prompt: 外观+颜色+材质+尺寸+细节+状态，精准具体
+5. notes: 备注（重复出场次数/特殊情况）
+
+文生图描述词示例：
+黑色皮质笔记本，A5尺寸，封面光滑，银色金属搭扣，内页米黄色，边缘无磨损，全新状态，高清写实，光线柔和
+
+只输出JSON数组，不要其他文字。"""
+
+    # 三个AI调用并发执行，速度提升3倍
+    raw_chars, raw_scenes, raw_props = await asyncio.gather(
+        call_minimax(chars_prompt, f"剧本：\n{req.script[:6000]}"),
+        call_minimax(scenes_prompt, f"剧本：\n{req.script[:6000]}"),
+        call_minimax(props_prompt, f"剧本：\n{req.script[:6000]}"),
+    )
+
+    try:
+        m = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw_chars, re.DOTALL)
+        characters = json.loads(m.group(1)) if m else json.loads(raw_chars)
+    except:
+        characters = []
+
+    try:
+        m = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw_scenes, re.DOTALL)
+        scenes = json.loads(m.group(1)) if m else json.loads(raw_scenes)
+    except:
+        scenes = []
+
+    try:
+        m = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw_props, re.DOTALL)
+        props = json.loads(m.group(1)) if m else json.loads(raw_props)
+    except:
+        props = []
+
+    return {
+        "characters": characters,
+        "scenes": scenes,
+        "props": props,
+        "summary": {
+            "total_characters": len(characters),
+            "total_scenes": len(scenes),
+            "total_props": len(props),
+        }
+    }
+
+
+# ─── 1.7 统一生成提示词 ────────────────────────────────────
+@app.post("/api/generate-prompts")
+async def generate_prompts(req: PromptRequest, _=Depends(require_auth)):
+    """
+    为用户选中的场景/角色/道具生成视觉提示词
+    """
+    results = {}
+
+    # 场景提示词
+    if req.scenes:
+        system_prompt = """你是一个专业的影视分镜师和AI绘图提示词工程师。
+
+收到场景列表后，为每个场景生成视觉提示词。
+
+每个场景输出 JSON：
+- scene_id: 场景编号
+- visual_description: 画面描述
+- camera_angle: 摄影角度（鸟瞰/仰角/过肩/正面中景等）
+- mood: 氛围关键词（冷色调/暖色调/暗光等）
+- jimeng_prompt: 即梦(Jimeng)风格英文提示词，格式：
+  客观描述 + 整体风格 + 光影细节 + 细节补充 + 电影级画面质感，高清摄影风格，专业摄影作品，8K超高清，无噪点，杰作
+
+只输出 JSON 数组。"""
+        raw = await call_minimax(system_prompt, f"场景列表：\n{json.dumps(req.scenes, ensure_ascii=False, indent=2)}")
+        try:
+            match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
+            results["scenes"] = json.loads(match.group(1)) if match else json.loads(raw)
+        except:
+            results["scenes"] = req.scenes
+
+    # 角色提示词
+    if req.characters:
+        system_prompt = """你是一个专业的影视美术设计师和人物设定专家。
+
+收到角色列表后，为每个角色生成视觉提示词。
+
+每个角色输出 JSON：
+- name: 角色姓名
+- role: 角色定位
+- age_appearance: 外貌年龄描述
+- personality: 性格特点
+- visual_prompt: AI绘图英文提示词（格式：人物类型 + 外貌 + 服装 + 光影 + 电影级质感，专业摄影作品，8K超高清，无噪点，杰作）
+
+只输出 JSON 数组。"""
+        raw = await call_minimax(system_prompt, f"角色列表：\n{json.dumps(req.characters, ensure_ascii=False, indent=2)}")
+        try:
+            match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
+            results["characters"] = json.loads(match.group(1)) if match else json.loads(raw)
+        except:
+            results["characters"] = req.characters
+
+    # 道具提示词
+    if req.props:
+        system_prompt = """你是一个专业的影视美术指导。
+
+收到道具列表后，为每个道具生成视觉提示词。
+
+每个道具输出 JSON：
+- name: 道具名称
+- description: 道具外观描述
+- scene_where: 出现场景
+- visual_prompt: AI绘图英文提示词（格式：道具类型 + 外观 + 材质 + 光影 + 电影级质感，专业摄影作品，8K超高清，无噪点，杰作）
+
+只输出 JSON 数组。"""
+        raw = await call_minimax(system_prompt, f"道具列表：\n{json.dumps(req.props, ensure_ascii=False, indent=2)}")
+        try:
+            match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
+            results["props"] = json.loads(match.group(1)) if match else json.loads(raw)
+        except:
+            results["props"] = req.props
+
+    return results
+
+
+# ─── 2. 剧本生成 ───────────────────────────────────────────
+@app.post("/api/generate-script", response_model=ScriptGenerateResult)
+async def generate_script(input: NovelInput, _=Depends(require_auth)):
+    # 规范化为列表
+    raw = input.style or "写实电影"
+    if isinstance(raw, str):
+        styles = [s.strip() for s in raw.split(",") if s.strip()]
+    else:
+        styles = list(raw)
+
+    # ── 短剧爆款专属脚本 ────────────────────────────────
+    if "短剧爆款" in styles:
+        # 合并其他风格描述
+        style_map = {
+            "惊悚恐怖": "叠加惊悚恐怖氛围：不安与恐惧逐渐累积，心理压迫感，黑暗中潜伏的未知威胁。",
+            "浪漫爱情": "叠加浪漫爱情线：情感细腻丰富，眼神与肢体语言胜过台词，甜蜜中带阻碍。",
+            "悬疑惊悚": "叠加悬疑惊悚：信息层层剥露，悬念感压倒一切，节奏紧凑。",
+            "黑色电影": "叠加黑色电影：冷硬笔触，罪恶与道德模糊，高反差光影。",
+            "王家卫风格": "叠加王家卫风格：迷幻疏离，慢镜头与霓虹光影交织。",
+        }
+        extra_style = "\n".join([style_map[s] for s in styles if s in style_map])
+
+        system_prompt = f"""你是一位顶级短剧编剧+内容工业化操盘手，专精爽文短剧改编、赘婿/战神回归、情绪与留存设计。你的唯一目标：最大化用户停留时长+追更欲望+爽感密度。
+
+【绝对规则】
+1. 纯中文，禁止英文（除8K等）。
+2. 零删减+强化：不删除主线剧情，允许强化冲突/提前爽点/加重打脸。
+3. 禁止小说表达：必须全部转为动作/对话/镜头。
+
+{extra_style}
+
+【核心：自动拆集系统】
+根据内容长度自动拆分为多集（第1集/第2集/第3集……），每集：
+- 时长感约1分钟（阅读约800~1200字）
+- 场景1~3个
+- 必有冲突+打脸或铺垫
+
+【单集结构模板】
+【开头3秒钩子】：强冲突/危机/打脸前奏
+【发展】：挑衅→羞辱→压迫
+【反转/打脸】：主角出手或铺垫释放
+【结尾钩子】：必须吊住观众（"等等……他刚才说什么？""你以为，这就结束了？""真正的大人物，还没到。""你确定，要动我？"）
+
+【拆集切断规则】：在以下节点强制断集——打脸即将发生前、身份即将曝光、冲突升级瞬间、情绪爆点最高处。"最爽的地方，下一集再给"。
+
+【打脸系统】：每一集必须包含——挑衅（反派）、羞辱（加码）、主角隐忍/铺垫、打脸或强铺垫。打脸要求：快、狠、多人见证。
+
+【台词爽感系统】：反派台词侮辱性强带身份压制；主角台词短句冷压迫感（"说完了吗？""轮到我了。"）。
+
+【剧本格式（统一输出）】
+【第X集】
+【场景】时间+地点
+人物：XXX、XXX
+▲镜头：（景别+运镜+氛围）
+【动作】（行为+表情+节奏）
+【角色名】
+对白
+
+【镜头强化】：关键节点加入特写（脸/手/眼神）、慢镜头（打脸瞬间）、群体反应（震惊/议论）。
+
+【情绪线】：强化委屈、被压迫、情绪爆发，增强代入感。
+
+【商业爽点】：体现金钱碾压（几十万→几亿→千亿）、权力碾压、身份反差。
+
+【禁止】：无冲突场景、慢节奏铺垫、打脸不彻底、一集无高潮。
+
+按短视频平台节奏生成：3秒钩子、30秒爆点、结尾强断点；优先制造打脸与反转。
+
+直接输出剧本正文，不解释、不总结、直接给剧本。"""
+
+        script = await call_minimax(system_prompt, input.text[:8000])
+        scene_count = script.count("【第")
+
+        return ScriptGenerateResult(
+            script=script.strip(),
+            scene_count=scene_count,
+        )
+
+    # ── 通用电影剧本脚本 ─────────────────────────────────
+    style_map = {
+        "写实电影": "现实主义手法，情感克制而深刻，追求生活本身的质感。",
+        "王家卫风格": "迷幻疏离的都市氛围，慢镜头、定格、内心独白与霓虹光影交织，时间与记忆是永恒主题。",
+        "黑色电影": "冷硬笔触，罪恶与道德模糊，高反差光影，宿命论的悲剧色彩。",
+        "赛博朋克": "高科技与低生活的对撞，霓虹雨夜、数据洪流、身体改造，冰冷中带绝望。",
+        "日式治愈": "细腻克制的情感表达，日常细节中见温情，留白与季节感，平静中带有隐隐的哀愁。",
+        "悬疑惊悚": "信息层层剥露，悬念感压倒一切，节奏紧凑，恐惧来自未知而非暴力。",
+        "武侠江湖": "古典侠义精神，刀光剑影与义气豪情，快意恩仇，动作写意而不写实。",
+        "动漫风格": "夸张表演、强烈情绪符号、独特构图感，色彩鲜明，戏剧感强。",
+        "惊悚恐怖": "不安与恐惧逐渐累积，心理压迫感，黑暗中潜伏的未知威胁。",
+        "浪漫爱情": "情感细腻丰富，眼神与肢体语言胜过台词，甜蜜中带阻碍，美好的遗憾。",
+    }
+    style_parts = [style_map.get(s, s) for s in styles if s != "短剧爆款"]
+    style_desc = "【风格要求】：" + "；".join(style_parts) if style_parts else ""
+
+    system_prompt = f"""你是一位顶级电影编剧+分镜导演，擅长将小说改编为可拍摄的影视剧本。你的目标不是"复述小说"，而是：把文字叙事 → 转化为镜头语言+表演动作+戏剧冲突。
+
+【硬性规则】
+1. 必须使用纯中文。禁止出现英文（允许：8K、AI等少量技术词）。
+2. 零遗漏原则：核心剧情事件、人物关系与身份信息、情绪变化（必须外化为动作/表情）、关键细节（道具/环境/象征物）必须全部保留并转译。禁止跳剧情、禁止合并桥段、禁止用总结替代描写。
+3. 影视化转译规则：
+   - 心理活动 → 表情/动作/细节镜头
+   - 旁白 → 画外音或镜头表达
+   - 描写段落 → 场景调度+镜头语言
+   - 情绪 → 肢体/语气/节奏
+   示例：❌"他很愤怒" → ✅"他猛地攥紧拳头，指节发白，呼吸急促"
+
+{style_desc}
+
+【标准剧本格式（强制）】
+【场景】（时间+地点）
+人物：XXX、XXX
+【画面/动作】
+▲（镜头描述+调度+动作）
+【角色名】
+对白内容
+
+【镜头语言要求】：景别（特写/中景/远景/大特写）、运镜（推进/拉远/跟拍/慢镜头/手持晃）、氛围（光影/色调/音乐建议）。
+
+【节奏控制】：每个场景必须至少包含一个"冲突点"，结尾设置"钩子"（悬念/反转/情绪爆点）。
+
+直接输出剧本正文，不要任何说明文字、注释或摘要。"""
+
+    script = await call_minimax(system_prompt, input.text[:8000])
+    scene_count = len(re.findall(r"^【场景】", script, re.MULTILINE))
+
+    return ScriptGenerateResult(
+        script=script.strip(),
+        scene_count=scene_count,
+    )
+
+
+# ─── 3. 分镜生成 ───────────────────────────────────────────
+@app.post("/api/generate-storyboard", response_model=StoryboardResult)
+async def generate_storyboard(scenes: list[dict], _=Depends(require_auth)):
+    system_prompt = """你是一个专业的影视分镜师和AI绘图提示词工程师。
+
+收到场景列表后，为每个场景生成一个分镜卡片，包含：
+- 画面描述：详细的镜头画面描写（适合转译为AI绘图提示词）
+- 摄影角度：如鸟瞰、仰角、过肩、正面中景等
+- 氛围关键词：冷色调/暖色调/暗光等
+- jimeng_prompt：即梦(Jimeng)风格的英文提示词，格式：
+  客观描述 + 整体风格 + 光影细节 + 细节补充 + 电影级画面质感，高清摄影风格，专业摄影作品，8K超高清，无噪点，杰作
+
+输出 JSON 数组格式：
+[
+  {
+    "scene_id": 1,
+    "visual_description": "...",
+    "camera_angle": "...",
+    "mood": "...",
+    "jimeng_prompt": "..."
+  },
+  ...
+]
+
+只输出 JSON。"""
+
+    scenes_text = json.dumps(scenes[:20], ensure_ascii=False, indent=2)
+    raw = await call_minimax(system_prompt, f"场景列表：\n{scenes_text}")
+    
+    try:
+        match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", raw, re.DOTALL)
+        if match:
+            data = json.loads(match.group(1))
+        else:
+            data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise HTTPException(500, f"AI 返回格式错误: {e}\n\n原始输出:\n{raw[:500]}")
+    
+    return StoryboardResult(
+        storyboards=data if isinstance(data, list) else data.get("storyboards", []),
+        total_scenes=len(scenes),
+    )
+
+
+# ─── 4. 完整流程 ───────────────────────────────────────────
+@app.post("/api/full-pipeline")
+async def full_pipeline(req: FullPipelineRequest, _=Depends(require_auth)):
+    scenes_result = await extract_scenes(NovelInput(text=req.text, title=req.title))
+    script_result = await generate_script(NovelInput(text=req.text, title=req.title))
+    storyboard_result = await generate_storyboard(scenes_result.scenes)
+    
+    return {
+        "title": req.title,
+        "total_chars": scenes_result.total_chars,
+        "characters": scenes_result.characters,
+        "scenes": scenes_result.scenes,
+        "script": script_result.script,
+        "script_scene_count": script_result.scene_count,
+        "storyboards": storyboard_result.storyboards,
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)
