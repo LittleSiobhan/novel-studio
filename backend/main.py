@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
     init_db()  # 启动时创建表
     yield
 
-app = FastAPI(title="📚 小说工作站 API", lifespan=lifespan)
+app = FastAPI(title="📚 小说工作站 API", lifespan=lifespan, docs_url=None, redoc_url=None)
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,12 +41,15 @@ app.add_middleware(
 MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
 MINIMAX_BASE_URL = "https://api.minimaxi.com/anthropic"
 # 火山方舟（Coding Plan）
-ARK_API_KEY = os.getenv("ARK_API_KEY", "ENV_ARK_API_KEY")
+ARK_API_KEY = os.getenv("ARK_API_KEY", "")
 ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/coding/v3"
+# DeepSeek 官方 API
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
 # 可用文字模型
-AVAILABLE_MODELS = ["MiniMax-M2.7", "GLM-5.1", "Kimi-K2.6", "DeepSeek-V3.2"]
-DEFAULT_MODEL = "MiniMax-M2.7"
+AVAILABLE_MODELS = ["MiniMax-M2.7", "GLM-5.1", "Kimi-K2.6", "DeepSeek-V3.2", "deepseek-v4-flash", "deepseek-v4-pro", "doubao-seed-2.0-pro", "doubao-seed-2.0-code"]
+DEFAULT_MODEL = "DeepSeek-V3.2"
 
 # ─── Auth Config ────────────────────────────────────────────
 LOGIN_USERNAME = os.getenv("LOGIN_USERNAME", "littleee")
@@ -166,12 +169,12 @@ class FullPipelineRequest(BaseModel):
 
 # ─── AI Helper ─────────────────────────────────────────────
 async def call_ai(model: str, system: str, user: str) -> str:
-    """通用 AI 调用：MiniMax-M2.7 走 minimax API，其他走方舟 Coding Plan"""
+    """通用 AI 调用：MiniMax 走 Anthropic API，DeepSeek V4 走 DeepSeek 官方，其他走方舟 Coding Plan"""
     if model == "MiniMax-M2.7":
         # MiniMax 走独立 API
         if not MINIMAX_API_KEY:
             raise HTTPException(500, "MINIMAX_API_KEY 未配置")
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with httpx.AsyncClient(timeout=300) as client:
             resp = await client.post(
                 f"{MINIMAX_BASE_URL}/v1/messages",
                 headers={
@@ -181,7 +184,7 @@ async def call_ai(model: str, system: str, user: str) -> str:
                 },
                 json={
                     "model": "MiniMax-M2.7",
-                    "max_tokens": 2048,
+                    "max_tokens": 8192,
                     "system": system,
                     "messages": [{"role": "user", "content": user}],
                 },
@@ -193,11 +196,38 @@ async def call_ai(model: str, system: str, user: str) -> str:
                 if item.get("type") == "text":
                     return item["text"]
             raise HTTPException(500, "MiniMax 返回格式异常")
+    elif model in ("deepseek-v4-flash", "deepseek-v4-pro"):
+        # DeepSeek V4 走官方 API（OpenAI 兼容）
+        if not DEEPSEEK_API_KEY:
+            raise HTTPException(500, "DEEPSEEK_API_KEY 未配置")
+        async with httpx.AsyncClient(timeout=300) as client:
+            resp = await client.post(
+                f"{DEEPSEEK_BASE_URL}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "max_tokens": 8192,
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                },
+            )
+            if resp.status_code != 200:
+                raise HTTPException(500, f"DeepSeek API 错误: {resp.status_code} - {resp.text}")
+            data = resp.json()
+            choices = data.get("choices", [])
+            if choices:
+                return choices[0]["message"]["content"]
+            raise HTTPException(500, f"DeepSeek 返回格式异常: {json.dumps(data, ensure_ascii=False)[:300]}")
     else:
         # 其他模型走方舟 Coding Plan
         if not ARK_API_KEY:
             raise HTTPException(500, "ARK_API_KEY 未配置")
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with httpx.AsyncClient(timeout=300) as client:
             resp = await client.post(
                 f"{ARK_BASE_URL}/chat/completions",
                 headers={
@@ -205,8 +235,8 @@ async def call_ai(model: str, system: str, user: str) -> str:
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": model,
-                    "max_tokens": 2048,
+                    "model": model.lower(),
+                    "max_tokens": 8192,
                     "messages": [
                         {"role": "system", "content": system},
                         {"role": "user", "content": user},
@@ -529,9 +559,9 @@ async def extract_full_assets(req: ExtractAssetsRequest, _=Depends(require_auth)
 
     # 三个AI调用并发执行，全部使用 MiniMax-M2.7
     raw_chars, raw_scenes, raw_props = await asyncio.gather(
-        call_ai("MiniMax-M2.7", chars_prompt, f"剧本：\n{req.script[:6000]}"),
-        call_ai("MiniMax-M2.7", scenes_prompt, f"剧本：\n{req.script[:6000]}"),
-        call_ai("MiniMax-M2.7", props_prompt, f"剧本：\n{req.script[:6000]}"),
+        call_ai(req.model, chars_prompt, f"剧本：\n{req.script[:6000]}"),
+        call_ai(req.model, scenes_prompt, f"剧本：\n{req.script[:6000]}"),
+        call_ai(req.model, props_prompt, f"剧本：\n{req.script[:6000]}"),
     )
 
     try:

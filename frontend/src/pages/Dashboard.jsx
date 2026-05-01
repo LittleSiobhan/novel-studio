@@ -225,7 +225,7 @@ export default function Dashboard() {
   const [novelText, setNovelText] = useState('')
   const [script, setScript] = useState('')
   const [scriptStyles, setScriptStyles] = useState(['写实电影'])
-  const [scriptModel, setScriptModel] = useState('MiniMax-M2.7')
+  const [scriptModel, setScriptModel] = useState('DeepSeek-V3.2')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
 
@@ -235,7 +235,7 @@ export default function Dashboard() {
   // 加载状态
   const [loadingScript, setLoadingScript] = useState(false)
   const [loadingAssets, setLoadingAssets] = useState(false)
-  const [assetModel, setAssetModel] = useState('MiniMax-M2.7')
+  const [assetModel, setAssetModel] = useState('DeepSeek-V3.2')
 
   useEffect(() => { loadProjects() }, [])
 
@@ -313,15 +313,23 @@ export default function Dashboard() {
     if (!novelText.trim()) { setError('请先输入小说文本'); return }
     setLoadingScript(true); setError('')
     try {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 300000) // 5分钟超时
       const r = await fetch(`${API}/generate-script`, {
         method: 'POST', headers: authHeaders(),
         body: JSON.stringify({ text: novelText, title: selected?.name, style: scriptStyles, model: scriptModel }),
+        signal: controller.signal,
       })
+      clearTimeout(timer)
+      if (!r.ok) { const err = await r.json().catch(() => ({})); throw new Error(err.detail || `服务器错误 ${r.status}`) }
       const d = await r.json()
       setScript(d.script)
       setAssetData(null)
       await saveProject({ script: d.script, status: 'script_done' })
-    } catch { setError('剧本生成失败') } finally { setLoadingScript(false) }
+    } catch (e) {
+      if (e.name === 'AbortError') setError('剧本生成超时（5分钟），请减少文本长度后重试')
+      else setError('剧本生成失败：' + (e.message || '未知错误'))
+    } finally { setLoadingScript(false) }
   }
 
   // ② 提炼素材（详细版）
@@ -330,7 +338,7 @@ export default function Dashboard() {
     setLoadingAssets(true); setError('')
     try {
       const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 120000)
+      const timer = setTimeout(() => controller.abort(), 300000)
       const r = await fetch(`${API}/extract-full-assets`, {
         method: 'POST',
         headers: authHeaders(),
@@ -479,10 +487,14 @@ export default function Dashboard() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 12, color: S.textMuted }}>模型:</span>
                   <select value={scriptModel} onChange={e => setScriptModel(e.target.value)} style={{ padding: '5px 8px', borderRadius: 6, fontSize: 12, background: S.inputBg, border: '1px solid rgba(56,189,248,0.2)', color: S.text, outline: 'none', cursor: 'pointer' }}>
-                    <option value="MiniMax-M2.7">MiniMax-M2.7</option>
+                    <option value="deepseek-v4-flash">DeepSeek V4 Flash</option>
+                    <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
+                    <option value="DeepSeek-V3.2">DeepSeek V3.2</option>
                     <option value="GLM-5.1">GLM-5.1</option>
-                    <option value="Kimi-K2.6">Kimi-K2.6</option>
-                    <option value="DeepSeek-V3.2">DeepSeek-V3.2</option>
+                    <option value="Kimi-K2.6">Kimi K2.6</option>
+                    <option value="MiniMax-M2.7">MiniMax M2.7</option>
+                    <option value="doubao-seed-2.0-pro">豆包 Seed 2.0 Pro</option>
+                    <option value="doubao-seed-2.0-code">豆包 Seed 2.0 Code</option>
                   </select>
                   <span style={{ fontSize: 12, color: S.textMuted }}>{novelText.length} 字</span>
                 </div>
@@ -504,10 +516,14 @@ export default function Dashboard() {
                   <Btn onClick={downloadScript} secondary>下载剧本</Btn>
                   <span style={{ fontSize: 11, color: S.textMuted }}>素材模型:</span>
                   <select value={assetModel} onChange={e => setAssetModel(e.target.value)} style={{ padding: '5px 8px', borderRadius: 6, fontSize: 12, background: S.inputBg, border: '1px solid rgba(56,189,248,0.2)', color: S.text, outline: 'none', cursor: 'pointer' }}>
-                    <option value="MiniMax-M2.7">MiniMax-M2.7</option>
+                    <option value="deepseek-v4-flash">DeepSeek V4 Flash</option>
+                    <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
+                    <option value="DeepSeek-V3.2">DeepSeek V3.2</option>
                     <option value="GLM-5.1">GLM-5.1</option>
-                    <option value="Kimi-K2.6">Kimi-K2.6</option>
-                    <option value="DeepSeek-V3.2">DeepSeek-V3.2</option>
+                    <option value="Kimi-K2.6">Kimi K2.6</option>
+                    <option value="MiniMax-M2.7">MiniMax M2.7</option>
+                    <option value="doubao-seed-2.0-pro">豆包 Seed 2.0 Pro</option>
+                    <option value="doubao-seed-2.0-code">豆包 Seed 2.0 Code</option>
                   </select>
                   <Btn onClick={handleExtractAssets} loading={loadingAssets}>② 提炼素材（详细版）</Btn>
                 </div>
